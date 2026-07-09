@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Projects\\Kidamooz\\back\\back.csproj": {}
+    "D:\\Projects\\Kidamooz\\Back\\back.csproj": {}
   },
   "projects": {
-    "D:\\Projects\\Kidamooz\\back\\back.csproj": {
+    "D:\\Projects\\Kidamooz\\Back\\back.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Projects\\Kidamooz\\back\\back.csproj",
+        "projectUniqueName": "D:\\Projects\\Kidamooz\\Back\\back.csproj",
         "projectName": "back",
-        "projectPath": "D:\\Projects\\Kidamooz\\back\\back.csproj",
+        "projectPath": "D:\\Projects\\Kidamooz\\Back\\back.csproj",
         "packagesPath": "C:\\Users\\Mahdi\\.nuget\\packages\\",
-        "outputPath": "D:\\Projects\\Kidamooz\\back\\obj\\",
+        "outputPath": "D:\\Projects\\Kidamooz\\Back\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -50,9 +50,31 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
-            "Microsoft.AspNetCore.OpenApi": {
+            "AWSSDK.S3": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[4.0.100.3, )"
+            },
+            "BCrypt.Net-Next": {
+              "target": "Package",
+              "version": "[4.2.0, )"
+            },
+            "Microsoft.AspNetCore.Authentication.JwtBearer": {
+              "target": "Package",
+              "version": "[9.0.9, )"
+            },
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[9.0.9, )"
+            },
+            "Microsoft.EntityFrameworkCore.SqlServer": {
+              "target": "Package",
+              "version": "[9.0.9, )"
+            },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[6.9.0, )"
             }
           },
           "imports": [
