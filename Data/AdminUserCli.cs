@@ -6,7 +6,7 @@ namespace Kidamooz.Data;
 public static class AdminUserCli
 {
     public static bool IsCommand(string[] args) =>
-        args.Length > 0 && args[0] is "create-admin" or "reset-admin-password";
+        args.Length > 0 && args[0] is "create-admin" or "reset-admin-password" or "setup-db";
 
     public static async Task<int> RunAsync(string[] args)
     {
@@ -29,6 +29,7 @@ public static class AdminUserCli
 
             return args[0] switch
             {
+                "setup-db" => await SetupDatabaseAsync(db),
                 "create-admin" => await CreateAdminAsync(db, args),
                 "reset-admin-password" => await ResetPasswordAsync(db, args),
                 _ => PrintUsage()
@@ -39,6 +40,13 @@ public static class AdminUserCli
             Console.Error.WriteLine($"خطا: {ex.Message}");
             return 1;
         }
+    }
+
+    private static async Task<int> SetupDatabaseAsync(AppDbContext db)
+    {
+        await DbInitializer.InitializeAsync(db);
+        Console.WriteLine("دیتابیس آماده شد: جداول ساخته شد و داده‌های اولیه وارد شد.");
+        return 0;
     }
 
     private static async Task<int> CreateAdminAsync(AppDbContext db, string[] args)
@@ -96,6 +104,7 @@ public static class AdminUserCli
         Console.WriteLine("""
         استفاده:
 
+          dotnet run -- setup-db
           dotnet run -- create-admin --email admin@kidamooz.com --password "YourPass123" --name "مدیر سیستم" --role admin
           dotnet run -- reset-admin-password --email admin@kidamooz.com --password "NewPass123"
 

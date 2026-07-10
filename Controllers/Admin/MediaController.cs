@@ -23,12 +23,34 @@ public class MediaController(IMediaService mediaService) : ControllerBase
         }
     }
 
-    [HttpPost("confirm")]
-    public ActionResult<ConfirmUploadResponseDto> Confirm([FromBody] ConfirmUploadRequestDto request)
+    [HttpPost("upload")]
+    [RequestSizeLimit(30 * 1024 * 1024)]
+    public async Task<ActionResult<ConfirmUploadResponseDto>> Upload(
+        IFormFile file,
+        [FromForm] string mediaType,
+        CancellationToken ct)
     {
         try
         {
-            return Ok(mediaService.ConfirmUpload(request));
+            if (file is null)
+                return BadRequest(new { message = "فایل الزامی است" });
+
+            return Ok(await mediaService.UploadAsync(file, mediaType, ct));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("confirm")]
+    public async Task<ActionResult<ConfirmUploadResponseDto>> Confirm(
+        [FromBody] ConfirmUploadRequestDto request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await mediaService.ConfirmUploadAsync(request, ct));
         }
         catch (ArgumentException ex)
         {

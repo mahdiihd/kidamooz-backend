@@ -21,7 +21,8 @@ public class AuthService(
     private readonly JwtSettings _jwtSettings = jwtOptions.Value;
     public async Task<AuthTokensDto> LoginAsync(LoginRequestDto request, CancellationToken ct = default)
     {
-        var user = await userRepository.GetByEmailAsync(request.Email, ct);
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await userRepository.GetByEmailAsync(email, ct);
         if (user == null || !user.IsActive || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             throw new UnauthorizedAccessException("ایمیل یا رمز عبور اشتباه است");
 

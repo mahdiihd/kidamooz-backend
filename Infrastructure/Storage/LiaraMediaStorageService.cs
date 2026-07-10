@@ -7,6 +7,8 @@ namespace Kidamooz.Infrastructure.Storage;
 public interface IMediaStorageService
 {
     UploadUrlResponseDto CreateUploadUrl(string fileName, string contentType, string mediaType);
+    Task<string> UploadAsync(Stream content, string fileName, string contentType, string mediaType, CancellationToken ct = default);
+    Task<bool> ObjectExistsAsync(string publicUrl, CancellationToken ct = default);
     bool ValidatePublicUrl(string publicUrl, string mediaType);
 }
 
@@ -31,17 +33,55 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             Expires = expires
         });
 
-        var publicUrl = $"{settings.PublicBaseUrl.TrimEnd('/')}/{key}";
-        return new UploadUrlResponseDto(uploadUrl, publicUrl, new DateTimeOffset(expires, TimeSpan.Zero));
+        return new UploadUrlResponseDto(uploadUrl, BuildPublicUrl(key), new DateTimeOffset(expires, TimeSpan.Zero));
+    }
+
+    public async Task<string> UploadAsync(
+        Stream content,
+        string fileName,
+        string contentType,
+        string mediaType,
+        CancellationToken ct = default)
+    {
+        ValidateContentType(contentType, mediaType);
+
+        var key = BuildObjectKey(mediaType, fileName);
+        var request = new PutObjectRequest
+        {
+            BucketName = settings.BucketName,
+            Key = key,
+            InputStream = content,
+            ContentType = contentType,
+            AutoCloseStream = false
+        };
+
+        await s3.PutObjectAsync(request, ct);
+        return BuildPublicUrl(key);
+    }
+
+    public async Task<bool> ObjectExistsAsync(string publicUrl, CancellationToken ct = default)
+    {
+        var key = ExtractObjectKey(publicUrl);
+        if (key is null)
+            return false;
+
+        try
+        {
+            await s3.GetObjectMetadataAsync(settings.BucketName, key, ct);
+            return true;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
     }
 
     public bool ValidatePublicUrl(string publicUrl, string mediaType)
     {
-        var baseUrl = settings.PublicBaseUrl.TrimEnd('/');
-        if (!publicUrl.StartsWith(baseUrl, StringComparison.OrdinalIgnoreCase))
+        var key = ExtractObjectKey(publicUrl);
+        if (key is null)
             return false;
 
-        var key = publicUrl[baseUrl.Length..].TrimStart('/');
         var prefix = mediaType switch
         {
             "cover" => "covers/",
@@ -51,6 +91,18 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         };
 
         return prefix != null && key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string BuildPublicUrl(string key) =>
+        $"{settings.PublicBaseUrl.TrimEnd('/')}/{key}";
+
+    private string? ExtractObjectKey(string publicUrl)
+    {
+        var baseUrl = settings.PublicBaseUrl.TrimEnd('/');
+        if (!publicUrl.StartsWith(baseUrl, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return publicUrl[baseUrl.Length..].TrimStart('/');
     }
 
     private static void ValidateContentType(string contentType, string mediaType)

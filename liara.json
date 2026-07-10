@@ -1,0 +1,8 @@
+{
+  "app": "kidamooz-back",
+  "port": 80,
+  "platform": "dotnet",
+  "build": {
+    "location": "germany"
+  }
+}

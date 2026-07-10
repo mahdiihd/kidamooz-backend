@@ -324,3 +324,43 @@ END;
 COMMIT;
 GO
 
+IF NOT EXISTS (SELECT 1 FROM [users] WHERE [Email] = N'admin@kidamooz.com')
+BEGIN
+    INSERT INTO [users] ([Id], [Email], [PasswordHash], [DisplayName], [Role], [IsActive], [CreatedAt], [UpdatedAt])
+    VALUES (
+        N'533D9AAB-DA42-49FA-A442-0849ECD5ADE4',
+        N'admin@kidamooz.com',
+        N'$2a$11$tz9aTI595sbR5SUmF5RdZOI4G7fAYo8X2ArLoqe0TyyrtQFOoQCmm',
+        N'مدیر سیستم',
+        N'admin',
+        1,
+        SYSDATETIMEOFFSET(),
+        SYSDATETIMEOFFSET()
+    );
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM [catalog_meta] WHERE [Id] = 1)
+BEGIN
+    INSERT INTO [catalog_meta] ([Id], [Version], [UpdatedAt])
+    VALUES (1, CONCAT(CONVERT(nvarchar(33), SYSDATETIMEOFFSET(), 127), N'-0-0'), SYSDATETIMEOFFSET());
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM [audience_segments] WHERE [Id] = N'premium')
+BEGIN
+    INSERT INTO [audience_segments] ([Id], [Label], [Description], [IsActive]) VALUES
+        (N'premium', N'اشتراک ویژه', N'کاربران با اشتراک پریمیوم', 1),
+        (N'family', N'پلن خانوادگی', N'خانواده‌های با چند پروفایل کودک', 1),
+        (N'beta', N'تسترهای بتا', N'گروه تست داخلی', 1),
+        (N'school', N'مدارس همکار', N'مدارس طرف قرارداد', 1);
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM [app_users] WHERE [Id] = N'u-1001')
+BEGIN
+    INSERT INTO [app_users] ([Id], [DisplayName], [Email], [IsActive]) VALUES
+        (N'u-1001', N'سارا احمدی', N'sara@example.com', 1),
+        (N'u-1002', N'علی رضایی', N'ali@example.com', 1);
+END;
+GO

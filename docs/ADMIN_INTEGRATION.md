@@ -157,6 +157,7 @@ Content-Type: application/json
 | `AudienceService.getUsers` | `GET /audience/users` | mock data |
 | `MediaService.*` | `/media/upload-url`, `/media/confirm` | `useMock` |
 | `AuditLogService.getAll` | `GET /audit-logs` | `useMock` |
+| `AdminUserService.*` | `/users` (GET/POST/PUT password/DELETE) | — |
 
 ---
 
@@ -228,6 +229,33 @@ Content-Type: application/json
 }
 ```
 
+### CORS باکت (الزامی برای آپلود از مرورگر)
+
+برای PUT مستقیم از پنل ادمین، روی باکت Liara قانون CORS تنظیم کنید:
+
+```json
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": [
+        "http://localhost:4200",
+        "https://kidamooz-front.liara.run"
+      ],
+      "AllowedMethods": ["GET", "PUT", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
+```
+
+```powershell
+aws s3api put-bucket-cors --bucket kid --cors-configuration file://cors.json --endpoint-url https://storage.c2.liara.site
+```
+
+> presigned URL بدون `ContentType` در امضا ساخته می‌شود تا مرورگر بتواند PUT بزند؛ نوع فایل قبل از صدور URL در بکند اعتبارسنجی می‌شود.
+
 ---
 
 ## ۸. مدیریت کاربران ادمین (API)
@@ -239,6 +267,7 @@ Content-Type: application/json
 | GET | `/users` | لیست ادمین‌ها |
 | POST | `/users` | ساخت ادمین |
 | PUT | `/users/{id}/password` | تغییر رمز |
+| DELETE | `/users/{id}` | حذف ادمین |
 
 ```http
 POST /api/v1/admin/users
@@ -252,7 +281,16 @@ Authorization: Bearer <token>
 }
 ```
 
+```http
+DELETE /api/v1/admin/users/{id}
+Authorization: Bearer <token>
+```
+
 نقش‌ها: `admin` | `editor`
+
+محدودیت حذف:
+- نمی‌توانید حساب خودتان را حذف کنید
+- حداقل یک ادمین باید باقی بماند
 
 ---
 
@@ -360,15 +398,36 @@ ConnectionStrings__Default=Server=kidamooz,1433;Database=myDB;User Id=sa;Passwor
 
 ### API و CORS
 
-| محیط | apiBaseUrl پیشنهادی |
-|------|---------------------|
+| محیط | apiBaseUrl |
+|------|------------|
 | Dev | `http://localhost:5042/api/v1/admin` |
-| Prod | `https://api.kidamooz.com/api/v1/admin` |
+| Prod | `https://kidamooz-back.liara.run/api/v1/admin` |
+
+**پنل ادمین (Angular):**
+
+| فایل | محیط |
+|------|------|
+| `Admin/src/environments/environment.ts` | Development — `localhost:5042` |
+| `Admin/src/environments/environment.production.ts` | Production — `kidamooz-back.liara.run` |
+
+Build پروداکشن پنل:
+
+```powershell
+cd D:\Projects\Kidamooz\Admin
+ng build --configuration production
+```
 
 - `Jwt:Secret` را در production عوض کنید
 - Liara Object Storage credentials را از env variable بخوانید
 - HTTPS فعال باشد
-- `Cors:AdminOrigins` را به دامنه واقعی پنل محدود کنید (`https://admin.kidamooz.com`)
+- `Cors:AdminOrigins` را به دامنه(های) واقعی پنل ادمین محدود کنید
+
+متغیر محیطی CORS روی لیارا (چند origin):
+
+```text
+Cors__AdminOrigins__0=https://admin.kidamooz.com
+Cors__AdminOrigins__1=http://localhost:4200
+```
 
 ---
 

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using Amazon.Runtime;
 using Amazon.S3;
+using Microsoft.AspNetCore.HttpOverrides;
 using Kidamooz.Data;
 using Kidamooz.Infrastructure.Auth;
 using Kidamooz.Infrastructure.Storage;
@@ -14,13 +15,16 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 if (AdminUserCli.IsCommand(args))
 {
     Environment.Exit(await AdminUserCli.RunAsync(args));
 }
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
-builder.Services.Configure<LiaraSettings>(builder.Configuration.GetSection("Liara"));
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
     ?? throw new InvalidOperationException("Jwt settings are required");
@@ -29,10 +33,20 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddSingleton<JwtTokenService>();
+var liaraSettings = LiaraConfiguration.Load(builder.Configuration);
+
+if (builder.Environment.IsProduction() &&
+    (string.IsNullOrWhiteSpace(liaraSettings.AccessKey) ||
+     string.IsNullOrWhiteSpace(liaraSettings.SecretKey) ||
+     liaraSettings.AccessKey.Contains("YOUR_", StringComparison.Ordinal) ||
+     liaraSettings.SecretKey.Contains("YOUR_", StringComparison.Ordinal)))
+{
+    throw new InvalidOperationException("Liara storage credentials are not configured for production.");
+}
+
 builder.Services.AddSingleton<IAmazonS3>(_ =>
 {
-    var liara = builder.Configuration.GetSection("Liara").Get<LiaraSettings>()
-        ?? throw new InvalidOperationException("Liara settings are required");
+    var liara = liaraSettings;
 
     var config = new AmazonS3Config
     {
@@ -44,8 +58,7 @@ builder.Services.AddSingleton<IAmazonS3>(_ =>
     return new AmazonS3Client(credentials, config);
 });
 
-builder.Services.AddSingleton<LiaraSettings>(sp =>
-    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<LiaraSettings>>().Value);
+builder.Services.AddSingleton(liaraSettings);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -140,19 +153,20 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+app.Lifetime.ApplicationStarted.Register(() => _ = InitializeDatabaseAsync(app));
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DbInitializer.InitializeAsync(db);
-}
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseHttpsRedirection();
 }
 
-app.UseHttpsRedirection();
 app.UseCors("Admin");
 app.UseAuthentication();
 app.UseAuthorization();
@@ -164,6 +178,21 @@ if (app.Environment.IsDevelopment())
 }
 
 app.Run();
+
+static async Task InitializeDatabaseAsync(WebApplication application)
+{
+    try
+    {
+        await using var scope = application.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await DbInitializer.InitializeAsync(db);
+        application.Logger.LogInformation("Database initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        application.Logger.LogError(ex, "Database initialization failed");
+    }
+}
 
 void OpenSwaggerInBrowser()
 {

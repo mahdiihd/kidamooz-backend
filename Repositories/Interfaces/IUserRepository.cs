@@ -9,6 +9,8 @@ public interface IUserRepository
     Task<AdminUser?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<bool> EmailExistsAsync(string email, CancellationToken ct = default);
     Task AddUserAsync(AdminUser user, CancellationToken ct = default);
+    Task DeleteUserAsync(AdminUser user, CancellationToken ct = default);
+    Task<int> CountAdminsAsync(CancellationToken ct = default);
     Task AddRefreshTokenAsync(RefreshToken token, CancellationToken ct = default);
     Task<RefreshToken?> GetRefreshTokenByHashAsync(string hash, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);

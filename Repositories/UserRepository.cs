@@ -25,6 +25,17 @@ public class UserRepository(AppDbContext db) : IUserRepository
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task DeleteUserAsync(AdminUser user, CancellationToken ct = default)
+    {
+        var tokens = await db.RefreshTokens.Where(t => t.UserId == user.Id).ToListAsync(ct);
+        db.RefreshTokens.RemoveRange(tokens);
+        db.Users.Remove(user);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public Task<int> CountAdminsAsync(CancellationToken ct = default) =>
+        db.Users.CountAsync(u => u.Role == "admin" && u.IsActive, ct);
+
     public async Task AddRefreshTokenAsync(RefreshToken token, CancellationToken ct = default)
     {
         db.RefreshTokens.Add(token);

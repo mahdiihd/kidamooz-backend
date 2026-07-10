@@ -8,7 +8,8 @@ namespace Kidamooz.Services;
 public interface IMediaService
 {
     UploadUrlResponseDto CreateUploadUrl(UploadUrlRequestDto request);
-    ConfirmUploadResponseDto ConfirmUpload(ConfirmUploadRequestDto request);
+    Task<ConfirmUploadResponseDto> UploadAsync(IFormFile file, string mediaType, CancellationToken ct = default);
+    Task<ConfirmUploadResponseDto> ConfirmUploadAsync(ConfirmUploadRequestDto request, CancellationToken ct = default);
 }
 
 public class MediaService(IMediaStorageService storage) : IMediaService
@@ -16,10 +17,23 @@ public class MediaService(IMediaStorageService storage) : IMediaService
     public UploadUrlResponseDto CreateUploadUrl(UploadUrlRequestDto request) =>
         storage.CreateUploadUrl(request.FileName, request.ContentType, request.MediaType);
 
-    public ConfirmUploadResponseDto ConfirmUpload(ConfirmUploadRequestDto request)
+    public async Task<ConfirmUploadResponseDto> UploadAsync(IFormFile file, string mediaType, CancellationToken ct = default)
+    {
+        if (file.Length <= 0)
+            throw new ArgumentException("فایل خالی است");
+
+        await using var stream = file.OpenReadStream();
+        var publicUrl = await storage.UploadAsync(stream, file.FileName, file.ContentType, mediaType, ct);
+        return new ConfirmUploadResponseDto(publicUrl);
+    }
+
+    public async Task<ConfirmUploadResponseDto> ConfirmUploadAsync(ConfirmUploadRequestDto request, CancellationToken ct = default)
     {
         if (!storage.ValidatePublicUrl(request.PublicUrl, request.MediaType))
             throw new ArgumentException("آدرس فایل معتبر نیست");
+
+        if (!await storage.ObjectExistsAsync(request.PublicUrl, ct))
+            throw new ArgumentException("فایل در فضای ذخیره‌سازی یافت نشد");
 
         return new ConfirmUploadResponseDto(request.PublicUrl);
     }
