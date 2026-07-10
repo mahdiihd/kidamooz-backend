@@ -59,6 +59,7 @@ builder.Services.AddSingleton<IAmazonS3>(_ =>
 });
 
 builder.Services.AddSingleton(liaraSettings);
+builder.Services.AddSingleton<IMediaUrlNormalizer, MediaUrlNormalizer>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();

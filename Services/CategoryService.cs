@@ -22,19 +22,20 @@ public class CategoryService(
     ICategoryRepository repository,
     ICatalogService catalogService,
     IAuditService auditService,
-    IMediaService mediaService) : ICategoryService
+    IMediaService mediaService,
+    IMediaUrlNormalizer mediaUrls) : ICategoryService
 {
     public async Task<List<CategoryDto>> GetAllAsync(CancellationToken ct = default)
     {
         var items = await repository.GetAllAsync(ct: ct);
-        return items.Select(EntityMappers.ToCategoryDto).ToList();
+        return items.Select(c => mediaUrls.Normalize(EntityMappers.ToCategoryDto(c))).ToList();
     }
 
     public async Task<CategoryDto> GetByIdAsync(string id, CancellationToken ct = default)
     {
         var category = await repository.GetByIdAsync(id, ct)
             ?? throw new KeyNotFoundException("دسته‌بندی یافت نشد");
-        return EntityMappers.ToCategoryDto(category);
+        return mediaUrls.Normalize(EntityMappers.ToCategoryDto(category));
     }
 
     public async Task<CategoryDto> CreateWithMediaAsync(CategorySaveForm form, CancellationToken ct = default)
@@ -72,7 +73,7 @@ public class CategoryService(
             Slug = payload.Slug,
             TitleFa = payload.Title.Fa,
             TitleEn = payload.Title.En,
-            IconUrl = payload.IconUrl,
+            IconUrl = mediaUrls.Normalize(payload.IconUrl),
             Color = payload.Color,
             SortOrder = payload.SortOrder,
             Published = payload.Published,
@@ -82,7 +83,7 @@ public class CategoryService(
 
         await repository.AddAsync(category, ct);
         await auditService.LogAsync("create", "category", category.Id, category.TitleFa, ct: ct);
-        return EntityMappers.ToCategoryDto(category);
+        return mediaUrls.Normalize(EntityMappers.ToCategoryDto(category));
     }
 
     public async Task<CategoryDto> UpdateAsync(string id, CategoryPayloadDto payload, CancellationToken ct = default)
@@ -97,7 +98,7 @@ public class CategoryService(
         category.Slug = payload.Slug;
         category.TitleFa = payload.Title.Fa;
         category.TitleEn = payload.Title.En;
-        category.IconUrl = payload.IconUrl;
+        category.IconUrl = mediaUrls.Normalize(payload.IconUrl);
         category.Color = payload.Color;
         category.SortOrder = payload.SortOrder;
         category.Published = payload.Published;
@@ -109,7 +110,7 @@ public class CategoryService(
         if (wasPublished || category.Published)
             await catalogService.BumpVersionAsync(ct);
 
-        return EntityMappers.ToCategoryDto(category);
+        return mediaUrls.Normalize(EntityMappers.ToCategoryDto(category));
     }
 
     public async Task DeleteAsync(string id, CancellationToken ct = default)
@@ -137,7 +138,7 @@ public class CategoryService(
         await repository.SaveChangesAsync(ct);
         await auditService.LogAsync(published ? "publish" : "unpublish", "category", category.Id, category.TitleFa, ct: ct);
         await catalogService.BumpVersionAsync(ct);
-        return EntityMappers.ToCategoryDto(category);
+        return mediaUrls.Normalize(EntityMappers.ToCategoryDto(category));
     }
 
     public async Task<List<CategoryDto>> ReorderAsync(List<string> ids, CancellationToken ct = default)
@@ -158,7 +159,9 @@ public class CategoryService(
         await auditService.LogAsync("reorder", "category", "all", "Categories", ct: ct);
         await catalogService.BumpVersionAsync(ct);
 
-        return (await repository.GetAllAsync(ct: ct)).Select(EntityMappers.ToCategoryDto).ToList();
+        return (await repository.GetAllAsync(ct: ct))
+            .Select(c => mediaUrls.Normalize(EntityMappers.ToCategoryDto(c)))
+            .ToList();
     }
 
     private async Task<string> ResolveIconUrlAsync(
@@ -189,12 +192,12 @@ public class CategoryService(
         }
 
         if (!string.IsNullOrWhiteSpace(existingUrl) && IsRemoteUrl(existingUrl))
-            return existingUrl;
+            return mediaUrls.Normalize(existingUrl);
 
         if (required)
             throw new MediaStorageException("آیکون الزامی است");
 
-        return existingUrl ?? string.Empty;
+        return mediaUrls.Normalize(existingUrl);
     }
 
     private static bool IsRemoteUrl(string url) =>

@@ -37,6 +37,7 @@ public class StoryService(
     ICatalogService catalogService,
     IAuditService auditService,
     IMediaService mediaService,
+    IMediaUrlNormalizer mediaUrls,
     AppDbContext db) : IStoryService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -47,14 +48,16 @@ public class StoryService(
     public async Task<StoryListResponseDto> GetAllAsync(StoryQuery query, CancellationToken ct = default)
     {
         var (items, total) = await repository.QueryAsync(query, ct);
-        return new StoryListResponseDto(items.Select(EntityMappers.ToStoryDto).ToList(), total);
+        return new StoryListResponseDto(
+            items.Select(s => mediaUrls.Normalize(EntityMappers.ToStoryDto(s))).ToList(),
+            total);
     }
 
     public async Task<StoryDetailDto> GetByIdAsync(string id, CancellationToken ct = default)
     {
         var story = await repository.GetByIdAsync(id, ct: ct)
             ?? throw new KeyNotFoundException("قصه یافت نشد");
-        return EntityMappers.ToStoryDetailDto(story);
+        return mediaUrls.Normalize(EntityMappers.ToStoryDetailDto(story));
     }
 
     public async Task<StoryDetailDto> CreateWithMediaAsync(
@@ -144,6 +147,8 @@ public class StoryService(
 
         var now = DateTimeOffset.UtcNow;
         var story = MapToEntity(payload, id, now);
+        story.CoverUrl = mediaUrls.Normalize(story.CoverUrl);
+        story.AudioUrl = mediaUrls.Normalize(story.AudioUrl);
         await repository.AddAsync(story, ct);
         await SetAudienceAsync(story, payload.Access, ct);
         await auditService.LogAsync("create", "story", story.Id, story.TitleFa, ct: ct);
@@ -160,6 +165,8 @@ public class StoryService(
 
         var wasPublished = story.Published;
         ApplyPayload(story, payload);
+        story.CoverUrl = mediaUrls.Normalize(story.CoverUrl);
+        story.AudioUrl = mediaUrls.Normalize(story.AudioUrl);
         story.UpdatedAt = DateTimeOffset.UtcNow;
         await SetAudienceAsync(story, payload.Access, ct);
         await repository.SaveChangesAsync(ct);
@@ -168,7 +175,7 @@ public class StoryService(
         if (wasPublished || story.Published)
             await catalogService.BumpVersionAsync(ct);
 
-        return EntityMappers.ToStoryDetailDto(story);
+        return mediaUrls.Normalize(EntityMappers.ToStoryDetailDto(story));
     }
 
     public async Task DeleteAsync(string id, CancellationToken ct = default)
@@ -197,7 +204,7 @@ public class StoryService(
         await repository.SaveChangesAsync(ct);
         await auditService.LogAsync(published ? "publish" : "unpublish", "story", story.Id, story.TitleFa, ct: ct);
         await catalogService.BumpVersionAsync(ct);
-        return EntityMappers.ToStoryDto(story);
+        return mediaUrls.Normalize(EntityMappers.ToStoryDto(story));
     }
 
     public async Task<StoryDto> ToggleFeaturedAsync(string id, bool featured, CancellationToken ct = default)
@@ -209,7 +216,7 @@ public class StoryService(
         story.UpdatedAt = DateTimeOffset.UtcNow;
         await repository.SaveChangesAsync(ct);
         await auditService.LogAsync("update", "story", story.Id, story.TitleFa, details: $"featured={featured}", ct: ct);
-        return EntityMappers.ToStoryDto(story);
+        return mediaUrls.Normalize(EntityMappers.ToStoryDto(story));
     }
 
     public async Task<StoryDetailDto> UpdateChaptersAsync(string id, List<StoryChapterDto> chapters, CancellationToken ct = default)
@@ -230,7 +237,7 @@ public class StoryService(
                 TitleFa = chapter.Title.Fa,
                 TitleEn = chapter.Title.En,
                 StartSeconds = chapter.StartSeconds,
-                ImageUrl = chapter.ImageUrl,
+                ImageUrl = mediaUrls.Normalize(chapter.ImageUrl),
                 SortOrder = order++
             });
         }
@@ -242,7 +249,7 @@ public class StoryService(
         if (wasPublished)
             await catalogService.BumpVersionAsync(ct);
 
-        return EntityMappers.ToStoryDetailDto(story);
+        return mediaUrls.Normalize(EntityMappers.ToStoryDetailDto(story));
     }
 
     public async Task<List<StoryDto>> ReorderAsync(List<string> ids, CancellationToken ct = default)
@@ -264,7 +271,7 @@ public class StoryService(
         await catalogService.BumpVersionAsync(ct);
 
         var (items, _) = await repository.QueryAsync(new StoryQuery(Limit: 10000), ct);
-        return items.Select(EntityMappers.ToStoryDto).ToList();
+        return items.Select(s => mediaUrls.Normalize(EntityMappers.ToStoryDto(s))).ToList();
     }
 
     private async Task<string> ResolveMediaUrlAsync(
@@ -296,12 +303,12 @@ public class StoryService(
         }
 
         if (!string.IsNullOrWhiteSpace(existingUrl) && IsRemoteUrl(existingUrl))
-            return existingUrl;
+            return mediaUrls.Normalize(existingUrl);
 
         if (required)
             throw new MediaStorageException(mediaType == "audio" ? "فایل صوت الزامی است" : "فایل کاور الزامی است");
 
-        return existingUrl ?? string.Empty;
+        return mediaUrls.Normalize(existingUrl);
     }
 
     private async Task<List<StoryChapterDto>> ResolveChaptersAsync(
