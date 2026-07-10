@@ -42,9 +42,21 @@ public class CategoriesController(ICategoryService categoryService) : Controller
         {
             return UnprocessableEntity(new { message = ex.Message });
         }
+        catch (ArgumentException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             return Conflict(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = ex.Message,
+                detail = ex.GetType().Name
+            });
         }
     }
 
@@ -65,9 +77,21 @@ public class CategoriesController(ICategoryService categoryService) : Controller
         {
             return UnprocessableEntity(new { message = ex.Message });
         }
+        catch (ArgumentException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             return Conflict(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = ex.Message,
+                detail = ex.GetType().Name
+            });
         }
     }
 

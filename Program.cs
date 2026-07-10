@@ -51,7 +51,9 @@ builder.Services.AddSingleton<IAmazonS3>(_ =>
     var config = new AmazonS3Config
     {
         ServiceURL = liara.EndpointUrl,
-        ForcePathStyle = true
+        ForcePathStyle = true,
+        Timeout = TimeSpan.FromSeconds(30),
+        MaxErrorRetry = 2
     };
 
     var credentials = new BasicAWSCredentials(liara.AccessKey, liara.SecretKey);
@@ -153,6 +155,22 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        var ex = feature?.Error;
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = ex?.Message ?? "خطای داخلی سرور",
+            detail = ex?.GetType().Name
+        });
+    });
+});
 
 app.Lifetime.ApplicationStarted.Register(() => _ = InitializeDatabaseAsync(app));
 

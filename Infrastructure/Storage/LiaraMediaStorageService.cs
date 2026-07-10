@@ -43,6 +43,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         string mediaType,
         CancellationToken ct = default)
     {
+        contentType = NormalizeContentType(contentType, fileName);
         ValidateContentType(contentType, mediaType);
 
         var key = BuildObjectKey(mediaType, fileName);
@@ -61,11 +62,12 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         }
         catch (AmazonS3Exception ex)
         {
-            throw new MediaStorageException(ex.Message, ex);
+            throw new MediaStorageException($"آپلود به فضای ذخیره‌سازی ناموفق بود: {ex.Message}", ex);
         }
-
-        if (!await ObjectExistsByKeyAsync(key, ct))
-            throw new MediaStorageException("فایل پس از آپلود در فضای ذخیره‌سازی یافت نشد.");
+        catch (Exception ex) when (ex is not MediaStorageException and not OperationCanceledException)
+        {
+            throw new MediaStorageException($"آپلود به فضای ذخیره‌سازی ناموفق بود: {ex.Message}", ex);
+        }
 
         return BuildPublicUrl(key);
     }
@@ -103,7 +105,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             await s3.GetObjectMetadataAsync(settings.BucketName, key, ct);
             return true;
         }
-        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (AmazonS3Exception)
         {
             return false;
         }
@@ -149,8 +151,31 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         if (string.IsNullOrWhiteSpace(settings.BucketName) || string.IsNullOrWhiteSpace(settings.EndpointUrl))
             return string.Empty;
 
-        var host = new Uri(settings.EndpointUrl).Host;
-        return $"https://{settings.BucketName}.{host}";
+        if (!Uri.TryCreate(settings.EndpointUrl, UriKind.Absolute, out var endpoint))
+            return string.Empty;
+
+        return $"https://{settings.BucketName}.{endpoint.Host}";
+    }
+
+    private static string NormalizeContentType(string contentType, string fileName)
+    {
+        var normalized = (contentType ?? string.Empty).Split(';')[0].Trim().ToLowerInvariant();
+        if (normalized is "image/jpg")
+            return "image/jpeg";
+        if (normalized is "audio/mp3")
+            return "audio/mpeg";
+        if (!string.IsNullOrWhiteSpace(normalized) && normalized != "application/octet-stream")
+            return normalized;
+
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".mp3" => "audio/mpeg",
+            ".m4a" or ".mp4" => "audio/mp4",
+            _ => normalized
+        };
     }
 
     private static void ValidateContentType(string contentType, string mediaType)

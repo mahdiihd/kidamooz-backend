@@ -88,10 +88,10 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
             seen.Add(normalized);
         }
 
-        if (!string.IsNullOrWhiteSpace(settings.BucketName) && !string.IsNullOrWhiteSpace(settings.EndpointUrl))
+        if (!string.IsNullOrWhiteSpace(settings.BucketName) && !string.IsNullOrWhiteSpace(settings.EndpointUrl)
+            && Uri.TryCreate(settings.EndpointUrl, UriKind.Absolute, out var endpoint))
         {
-            var host = new Uri(settings.EndpointUrl).Host;
-            Add($"https://{settings.BucketName}.{host}");
+            Add($"https://{settings.BucketName}.{endpoint.Host}");
         }
 
         Add("https://kid.storage.c2.liara.site");
