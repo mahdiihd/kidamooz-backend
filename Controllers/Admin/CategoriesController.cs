@@ -52,9 +52,12 @@ public class CategoriesController(ICategoryService categoryService) : Controller
         }
         catch (Exception ex)
         {
+            var message = ex is Microsoft.EntityFrameworkCore.DbUpdateException dbEx
+                ? dbEx.InnerException?.Message ?? dbEx.Message
+                : ex.Message;
             return StatusCode(StatusCodes.Status500InternalServerError, new
             {
-                message = ex.Message,
+                message,
                 detail = ex.GetType().Name
             });
         }
@@ -87,9 +90,12 @@ public class CategoriesController(ICategoryService categoryService) : Controller
         }
         catch (Exception ex)
         {
+            var message = ex is Microsoft.EntityFrameworkCore.DbUpdateException dbEx
+                ? dbEx.InnerException?.Message ?? dbEx.Message
+                : ex.Message;
             return StatusCode(StatusCodes.Status500InternalServerError, new
             {
-                message = ex.Message,
+                message,
                 detail = ex.GetType().Name
             });
         }

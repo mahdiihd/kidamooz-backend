@@ -58,7 +58,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("categories");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasMaxLength(64);
-            e.HasIndex(x => x.Slug).IsUnique();
+            e.HasIndex(x => x.Slug).IsUnique().HasFilter("[DeletedAt] IS NULL");
             e.Property(x => x.Slug).HasMaxLength(64);
             e.Property(x => x.TitleFa).HasMaxLength(300);
             e.Property(x => x.TitleEn).HasMaxLength(300);

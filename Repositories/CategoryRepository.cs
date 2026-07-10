@@ -23,6 +23,11 @@ public class CategoryRepository(AppDbContext db) : ICategoryRepository
     public Task<Category?> GetByIdAsync(string id, CancellationToken ct = default) =>
         db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null, ct);
 
+    public Task<Category?> FindDeletedByIdOrSlugAsync(string id, string slug, CancellationToken ct = default) =>
+        db.Categories.FirstOrDefaultAsync(
+            c => c.DeletedAt != null && (c.Id == id || c.Slug == slug),
+            ct);
+
     public Task<bool> ExistsAsync(string id, CancellationToken ct = default) =>
         db.Categories.AnyAsync(c => c.Id == id && c.DeletedAt == null, ct);
 

@@ -67,6 +67,23 @@ public class CategoryService(
             throw new InvalidOperationException("اسلاگ تکراری است");
 
         var now = DateTimeOffset.UtcNow;
+        var deleted = await repository.FindDeletedByIdOrSlugAsync(id, payload.Slug, ct);
+        if (deleted is not null)
+        {
+            deleted.Slug = payload.Slug;
+            deleted.TitleFa = payload.Title.Fa;
+            deleted.TitleEn = payload.Title.En;
+            deleted.IconUrl = mediaUrls.Normalize(payload.IconUrl);
+            deleted.Color = payload.Color;
+            deleted.SortOrder = payload.SortOrder;
+            deleted.Published = payload.Published;
+            deleted.DeletedAt = null;
+            deleted.UpdatedAt = now;
+            await repository.SaveChangesAsync(ct);
+            await auditService.LogAsync("create", "category", deleted.Id, deleted.TitleFa, details: "restored", ct: ct);
+            return mediaUrls.Normalize(EntityMappers.ToCategoryDto(deleted));
+        }
+
         var category = new Domain.Entities.Category
         {
             Id = id,
