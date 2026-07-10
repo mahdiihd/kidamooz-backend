@@ -1,4 +1,5 @@
 using Kidamooz.DTOs;
+using Kidamooz.Infrastructure.Storage;
 using Kidamooz.Repositories.Interfaces;
 using Kidamooz.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -43,12 +44,18 @@ public class StoriesController(IStoryService storyService) : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<StoryDetailDto>> Create([FromBody] StoryPayloadDto payload, CancellationToken ct)
+    [RequestSizeLimit(30 * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<StoryDetailDto>> Create([FromForm] StorySaveForm form, CancellationToken ct)
     {
         try
         {
-            var result = await storyService.CreateAsync(payload, ct);
+            var result = await storyService.CreateWithMediaAsync(form, CollectChapterImages(), ct);
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        }
+        catch (MediaStorageException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
@@ -57,15 +64,21 @@ public class StoriesController(IStoryService storyService) : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<StoryDetailDto>> Update(string id, [FromBody] StoryPayloadDto payload, CancellationToken ct)
+    [RequestSizeLimit(30 * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<StoryDetailDto>> Update(string id, [FromForm] StorySaveForm form, CancellationToken ct)
     {
         try
         {
-            return Ok(await storyService.UpdateAsync(id, payload, ct));
+            return Ok(await storyService.UpdateWithMediaAsync(id, form, CollectChapterImages(), ct));
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { message = ex.Message });
+        }
+        catch (MediaStorageException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
@@ -129,4 +142,21 @@ public class StoriesController(IStoryService storyService) : ControllerBase
     [HttpPut("reorder")]
     public async Task<ActionResult<List<StoryDto>>> Reorder([FromBody] ReorderRequestDto request, CancellationToken ct) =>
         Ok(await storyService.ReorderAsync(request.Ids, ct));
+
+    private Dictionary<int, IFormFile> CollectChapterImages()
+    {
+        var images = new Dictionary<int, IFormFile>();
+        const string prefix = "chapterImage_";
+
+        foreach (var file in Request.Form.Files)
+        {
+            if (!file.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (int.TryParse(file.Name[prefix.Length..], out var index))
+                images[index] = file;
+        }
+
+        return images;
+    }
 }

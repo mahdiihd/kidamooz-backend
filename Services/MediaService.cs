@@ -23,7 +23,12 @@ public class MediaService(IMediaStorageService storage) : IMediaService
             throw new ArgumentException("فایل خالی است");
 
         await using var stream = file.OpenReadStream();
-        var publicUrl = await storage.UploadAsync(stream, file.FileName, file.ContentType, mediaType, ct);
+        var publicUrl = await storage.UploadAsync(
+            stream,
+            file.FileName,
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            mediaType,
+            ct);
         return new ConfirmUploadResponseDto(publicUrl);
     }
 

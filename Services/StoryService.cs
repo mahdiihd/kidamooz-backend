@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Kidamooz.Data;
 using Kidamooz.Domain.Entities;
 using Kidamooz.DTOs;
+using Kidamooz.Infrastructure.Storage;
 using Kidamooz.Mapping;
 using Kidamooz.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +14,16 @@ public interface IStoryService
     Task<StoryListResponseDto> GetAllAsync(StoryQuery query, CancellationToken ct = default);
     Task<StoryDetailDto> GetByIdAsync(string id, CancellationToken ct = default);
     Task<StoryDetailDto> CreateAsync(StoryPayloadDto payload, CancellationToken ct = default);
+    Task<StoryDetailDto> CreateWithMediaAsync(
+        StorySaveForm form,
+        IReadOnlyDictionary<int, IFormFile> chapterImages,
+        CancellationToken ct = default);
     Task<StoryDetailDto> UpdateAsync(string id, StoryPayloadDto payload, CancellationToken ct = default);
+    Task<StoryDetailDto> UpdateWithMediaAsync(
+        string id,
+        StorySaveForm form,
+        IReadOnlyDictionary<int, IFormFile> chapterImages,
+        CancellationToken ct = default);
     Task DeleteAsync(string id, CancellationToken ct = default);
     Task<StoryDto> PublishAsync(string id, bool published, CancellationToken ct = default);
     Task<StoryDto> ToggleFeaturedAsync(string id, bool featured, CancellationToken ct = default);
@@ -25,8 +36,14 @@ public class StoryService(
     ICategoryRepository categoryRepository,
     ICatalogService catalogService,
     IAuditService auditService,
+    IMediaService mediaService,
     AppDbContext db) : IStoryService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public async Task<StoryListResponseDto> GetAllAsync(StoryQuery query, CancellationToken ct = default)
     {
         var (items, total) = await repository.QueryAsync(query, ct);
@@ -38,6 +55,83 @@ public class StoryService(
         var story = await repository.GetByIdAsync(id, ct: ct)
             ?? throw new KeyNotFoundException("قصه یافت نشد");
         return EntityMappers.ToStoryDetailDto(story);
+    }
+
+    public async Task<StoryDetailDto> CreateWithMediaAsync(
+        StorySaveForm form,
+        IReadOnlyDictionary<int, IFormFile> chapterImages,
+        CancellationToken ct = default)
+    {
+        var coverUrl = await ResolveMediaUrlAsync(form.Cover, form.CoverUrl, "cover", required: true, ct);
+        var audioUrl = await ResolveMediaUrlAsync(form.Audio, form.AudioUrl, "audio", required: true, ct);
+        var access = ParseAccess(form.AccessJson);
+        var chapters = await ResolveChaptersAsync(form.ChaptersJson, chapterImages, ct);
+
+        var payload = new StoryPayloadDto(
+            form.Id,
+            new LocalizedTextDto(form.TitleFa, form.TitleEn),
+            new LocalizedTextDto(form.DescriptionFa, form.DescriptionEn),
+            coverUrl,
+            audioUrl,
+            form.DurationSeconds,
+            form.AgeMin,
+            form.AgeMax,
+            form.CategoryId,
+            form.Featured,
+            form.SortOrder,
+            form.Published,
+            null,
+            access);
+
+        var created = await CreateAsync(payload, ct);
+        if (chapters.Count > 0)
+            return await UpdateChaptersAsync(created.Id, chapters, ct);
+
+        return created;
+    }
+
+    public async Task<StoryDetailDto> UpdateWithMediaAsync(
+        string id,
+        StorySaveForm form,
+        IReadOnlyDictionary<int, IFormFile> chapterImages,
+        CancellationToken ct = default)
+    {
+        var existing = await repository.GetByIdAsync(id, ct: ct)
+            ?? throw new KeyNotFoundException("قصه یافت نشد");
+
+        var coverUrl = await ResolveMediaUrlAsync(
+            form.Cover,
+            string.IsNullOrWhiteSpace(form.CoverUrl) ? existing.CoverUrl : form.CoverUrl,
+            "cover",
+            required: true,
+            ct);
+        var audioUrl = await ResolveMediaUrlAsync(
+            form.Audio,
+            string.IsNullOrWhiteSpace(form.AudioUrl) ? existing.AudioUrl : form.AudioUrl,
+            "audio",
+            required: true,
+            ct);
+        var access = ParseAccess(form.AccessJson);
+        var chapters = await ResolveChaptersAsync(form.ChaptersJson, chapterImages, ct);
+
+        var payload = new StoryPayloadDto(
+            form.Id,
+            new LocalizedTextDto(form.TitleFa, form.TitleEn),
+            new LocalizedTextDto(form.DescriptionFa, form.DescriptionEn),
+            coverUrl,
+            audioUrl,
+            form.DurationSeconds,
+            form.AgeMin,
+            form.AgeMax,
+            form.CategoryId,
+            form.Featured,
+            form.SortOrder,
+            form.Published,
+            existing.PublishedAt,
+            access);
+
+        await UpdateAsync(id, payload, ct);
+        return await UpdateChaptersAsync(id, chapters, ct);
     }
 
     public async Task<StoryDetailDto> CreateAsync(StoryPayloadDto payload, CancellationToken ct = default)
@@ -173,6 +267,84 @@ public class StoryService(
         return items.Select(EntityMappers.ToStoryDto).ToList();
     }
 
+    private async Task<string> ResolveMediaUrlAsync(
+        IFormFile? file,
+        string? existingUrl,
+        string mediaType,
+        bool required,
+        CancellationToken ct)
+    {
+        if (file is { Length: > 0 })
+        {
+            try
+            {
+                var result = await mediaService.UploadAsync(file, mediaType, ct);
+                return result.Url;
+            }
+            catch (MediaStorageException)
+            {
+                throw;
+            }
+            catch (ArgumentException ex)
+            {
+                throw new MediaStorageException(ex.Message, ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new MediaStorageException(ex.Message, ex);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(existingUrl) && IsRemoteUrl(existingUrl))
+            return existingUrl;
+
+        if (required)
+            throw new MediaStorageException(mediaType == "audio" ? "فایل صوت الزامی است" : "فایل کاور الزامی است");
+
+        return existingUrl ?? string.Empty;
+    }
+
+    private async Task<List<StoryChapterDto>> ResolveChaptersAsync(
+        string chaptersJson,
+        IReadOnlyDictionary<int, IFormFile> chapterImages,
+        CancellationToken ct)
+    {
+        var chapters = JsonSerializer.Deserialize<List<ChapterFormDto>>(chaptersJson, JsonOptions) ?? [];
+        var result = new List<StoryChapterDto>();
+
+        for (var i = 0; i < chapters.Count; i++)
+        {
+            var chapter = chapters[i];
+            chapterImages.TryGetValue(i, out var imageFile);
+            var imageUrl = await ResolveMediaUrlAsync(
+                imageFile,
+                chapter.ImageUrl,
+                "cover",
+                required: true,
+                ct);
+
+            result.Add(new StoryChapterDto(
+                new LocalizedTextDto(chapter.Title?.Fa ?? string.Empty, chapter.Title?.En ?? string.Empty),
+                chapter.StartSeconds,
+                imageUrl));
+        }
+
+        return result;
+    }
+
+    private static StoryAccessDto ParseAccess(string accessJson)
+    {
+        var access = JsonSerializer.Deserialize<StoryAccessDto>(accessJson, JsonOptions);
+        if (access is null)
+            throw new MediaStorageException("اطلاعات دسترسی نامعتبر است");
+
+        return access;
+    }
+
+    private static bool IsRemoteUrl(string url) =>
+        url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        || url.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+
     private static Story MapToEntity(StoryPayloadDto payload, string id, DateTimeOffset now) => new()
     {
         Id = id,
@@ -246,5 +418,12 @@ public class StoryService(
 
         if (story.Published)
             await catalogService.BumpVersionAsync(ct);
+    }
+
+    private sealed class ChapterFormDto
+    {
+        public LocalizedTextDto? Title { get; set; }
+        public int StartSeconds { get; set; }
+        public string? ImageUrl { get; set; }
     }
 }

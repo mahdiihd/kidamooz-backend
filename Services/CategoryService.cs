@@ -1,6 +1,5 @@
-using Kidamooz.Data;
-using Kidamooz.Domain.Entities;
 using Kidamooz.DTOs;
+using Kidamooz.Infrastructure.Storage;
 using Kidamooz.Mapping;
 using Kidamooz.Repositories.Interfaces;
 
@@ -11,7 +10,9 @@ public interface ICategoryService
     Task<List<CategoryDto>> GetAllAsync(CancellationToken ct = default);
     Task<CategoryDto> GetByIdAsync(string id, CancellationToken ct = default);
     Task<CategoryDto> CreateAsync(CategoryPayloadDto payload, CancellationToken ct = default);
+    Task<CategoryDto> CreateWithMediaAsync(CategorySaveForm form, CancellationToken ct = default);
     Task<CategoryDto> UpdateAsync(string id, CategoryPayloadDto payload, CancellationToken ct = default);
+    Task<CategoryDto> UpdateWithMediaAsync(string id, CategorySaveForm form, CancellationToken ct = default);
     Task DeleteAsync(string id, CancellationToken ct = default);
     Task<CategoryDto> PublishAsync(string id, bool published, CancellationToken ct = default);
     Task<List<CategoryDto>> ReorderAsync(List<string> ids, CancellationToken ct = default);
@@ -20,7 +21,8 @@ public interface ICategoryService
 public class CategoryService(
     ICategoryRepository repository,
     ICatalogService catalogService,
-    IAuditService auditService) : ICategoryService
+    IAuditService auditService,
+    IMediaService mediaService) : ICategoryService
 {
     public async Task<List<CategoryDto>> GetAllAsync(CancellationToken ct = default)
     {
@@ -35,6 +37,26 @@ public class CategoryService(
         return EntityMappers.ToCategoryDto(category);
     }
 
+    public async Task<CategoryDto> CreateWithMediaAsync(CategorySaveForm form, CancellationToken ct = default)
+    {
+        var iconUrl = await ResolveIconUrlAsync(form.Icon, form.IconUrl, required: true, ct);
+        return await CreateAsync(form.ToPayload(iconUrl), ct);
+    }
+
+    public async Task<CategoryDto> UpdateWithMediaAsync(string id, CategorySaveForm form, CancellationToken ct = default)
+    {
+        var existing = await repository.GetByIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("دسته‌بندی یافت نشد");
+
+        var iconUrl = await ResolveIconUrlAsync(
+            form.Icon,
+            string.IsNullOrWhiteSpace(form.IconUrl) ? existing.IconUrl : form.IconUrl,
+            required: true,
+            ct);
+
+        return await UpdateAsync(id, form.ToPayload(iconUrl), ct);
+    }
+
     public async Task<CategoryDto> CreateAsync(CategoryPayloadDto payload, CancellationToken ct = default)
     {
         var id = payload.Id ?? payload.Slug;
@@ -44,7 +66,7 @@ public class CategoryService(
             throw new InvalidOperationException("اسلاگ تکراری است");
 
         var now = DateTimeOffset.UtcNow;
-        var category = new Category
+        var category = new Domain.Entities.Category
         {
             Id = id,
             Slug = payload.Slug,
@@ -138,4 +160,44 @@ public class CategoryService(
 
         return (await repository.GetAllAsync(ct: ct)).Select(EntityMappers.ToCategoryDto).ToList();
     }
+
+    private async Task<string> ResolveIconUrlAsync(
+        IFormFile? icon,
+        string? existingUrl,
+        bool required,
+        CancellationToken ct)
+    {
+        if (icon is { Length: > 0 })
+        {
+            try
+            {
+                var result = await mediaService.UploadAsync(icon, "icon", ct);
+                return result.Url;
+            }
+            catch (ArgumentException ex)
+            {
+                throw new MediaStorageException(ex.Message, ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new MediaStorageException(ex.Message, ex);
+            }
+            catch (MediaStorageException)
+            {
+                throw;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(existingUrl) && IsRemoteUrl(existingUrl))
+            return existingUrl;
+
+        if (required)
+            throw new MediaStorageException("آیکون الزامی است");
+
+        return existingUrl ?? string.Empty;
+    }
+
+    private static bool IsRemoteUrl(string url) =>
+        url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        || url.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
 }

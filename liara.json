@@ -4,5 +4,9 @@
   "platform": "dotnet",
   "build": {
     "location": "germany"
+  },
+  "dotnet": {
+    "version": "9.0",
+    "csprojectFile": "back.csproj"
   }
 }

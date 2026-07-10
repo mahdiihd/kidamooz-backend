@@ -1,4 +1,5 @@
 using Kidamooz.DTOs;
+using Kidamooz.Infrastructure.Storage;
 using Kidamooz.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,12 +29,18 @@ public class CategoriesController(ICategoryService categoryService) : Controller
     }
 
     [HttpPost]
-    public async Task<ActionResult<CategoryDto>> Create([FromBody] CategoryPayloadDto payload, CancellationToken ct)
+    [RequestSizeLimit(30 * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<CategoryDto>> Create([FromForm] CategorySaveForm form, CancellationToken ct)
     {
         try
         {
-            return CreatedAtAction(nameof(GetById), new { id = payload.Id ?? payload.Slug },
-                await categoryService.CreateAsync(payload, ct));
+            var result = await categoryService.CreateWithMediaAsync(form, ct);
+            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        }
+        catch (MediaStorageException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
@@ -42,15 +49,21 @@ public class CategoriesController(ICategoryService categoryService) : Controller
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<CategoryDto>> Update(string id, [FromBody] CategoryPayloadDto payload, CancellationToken ct)
+    [RequestSizeLimit(30 * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<CategoryDto>> Update(string id, [FromForm] CategorySaveForm form, CancellationToken ct)
     {
         try
         {
-            return Ok(await categoryService.UpdateAsync(id, payload, ct));
+            return Ok(await categoryService.UpdateWithMediaAsync(id, form, ct));
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { message = ex.Message });
+        }
+        catch (MediaStorageException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {

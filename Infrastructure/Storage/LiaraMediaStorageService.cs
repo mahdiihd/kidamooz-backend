@@ -55,7 +55,18 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             AutoCloseStream = false
         };
 
-        await s3.PutObjectAsync(request, ct);
+        try
+        {
+            await s3.PutObjectAsync(request, ct);
+        }
+        catch (AmazonS3Exception ex)
+        {
+            throw new MediaStorageException(ex.Message, ex);
+        }
+
+        if (!await ObjectExistsByKeyAsync(key, ct))
+            throw new MediaStorageException("فایل پس از آپلود در فضای ذخیره‌سازی یافت نشد.");
+
         return BuildPublicUrl(key);
     }
 
@@ -65,15 +76,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         if (key is null)
             return false;
 
-        try
-        {
-            await s3.GetObjectMetadataAsync(settings.BucketName, key, ct);
-            return true;
-        }
-        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            return false;
-        }
+        return await ObjectExistsByKeyAsync(key, ct);
     }
 
     public bool ValidatePublicUrl(string publicUrl, string mediaType)
@@ -93,16 +96,61 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         return prefix != null && key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
+    private async Task<bool> ObjectExistsByKeyAsync(string key, CancellationToken ct)
+    {
+        try
+        {
+            await s3.GetObjectMetadataAsync(settings.BucketName, key, ct);
+            return true;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    }
+
     private string BuildPublicUrl(string key) =>
         $"{settings.PublicBaseUrl.TrimEnd('/')}/{key}";
 
     private string? ExtractObjectKey(string publicUrl)
     {
-        var baseUrl = settings.PublicBaseUrl.TrimEnd('/');
-        if (!publicUrl.StartsWith(baseUrl, StringComparison.OrdinalIgnoreCase))
-            return null;
+        foreach (var baseUrl in GetAcceptedPublicBaseUrls())
+        {
+            if (!publicUrl.StartsWith(baseUrl, StringComparison.OrdinalIgnoreCase))
+                continue;
 
-        return publicUrl[baseUrl.Length..].TrimStart('/');
+            return publicUrl[baseUrl.Length..].TrimStart('/');
+        }
+
+        return null;
+    }
+
+    private IEnumerable<string> GetAcceptedPublicBaseUrls()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in new[]
+                 {
+                     settings.PublicBaseUrl,
+                     BuildLegacyStorageBaseUrl()
+                 })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            var normalized = candidate.TrimEnd('/');
+            if (seen.Add(normalized))
+                yield return normalized;
+        }
+    }
+
+    private string BuildLegacyStorageBaseUrl()
+    {
+        if (string.IsNullOrWhiteSpace(settings.BucketName) || string.IsNullOrWhiteSpace(settings.EndpointUrl))
+            return string.Empty;
+
+        var host = new Uri(settings.EndpointUrl).Host;
+        return $"https://{settings.BucketName}.{host}";
     }
 
     private static void ValidateContentType(string contentType, string mediaType)

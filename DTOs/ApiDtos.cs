@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace Kidamooz.DTOs;
 
 public record LocalizedTextDto(string Fa, string En);
@@ -131,6 +133,44 @@ public record UploadUrlResponseDto(string UploadUrl, string PublicUrl, DateTimeO
 public record ConfirmUploadRequestDto(string PublicUrl, string MediaType);
 
 public record ConfirmUploadResponseDto(string Url);
+
+public class CategorySaveForm
+{
+    public string? Id { get; set; }
+    public string TitleFa { get; set; } = string.Empty;
+    public string TitleEn { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+    public string? IconUrl { get; set; }
+    public string Color { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public bool Published { get; set; }
+    public IFormFile? Icon { get; set; }
+
+    public CategoryPayloadDto ToPayload(string iconUrl) =>
+        new(Id, new LocalizedTextDto(TitleFa, TitleEn), Slug, iconUrl, Color, SortOrder, Published);
+}
+
+public class StorySaveForm
+{
+    public string? Id { get; set; }
+    public string TitleFa { get; set; } = string.Empty;
+    public string TitleEn { get; set; } = string.Empty;
+    public string DescriptionFa { get; set; } = string.Empty;
+    public string DescriptionEn { get; set; } = string.Empty;
+    public string? CoverUrl { get; set; }
+    public string? AudioUrl { get; set; }
+    public int DurationSeconds { get; set; }
+    public int AgeMin { get; set; }
+    public int AgeMax { get; set; }
+    public string CategoryId { get; set; } = string.Empty;
+    public bool Featured { get; set; }
+    public int SortOrder { get; set; }
+    public bool Published { get; set; }
+    public string AccessJson { get; set; } = "{}";
+    public string ChaptersJson { get; set; } = "[]";
+    public IFormFile? Cover { get; set; }
+    public IFormFile? Audio { get; set; }
+}
 
 public record AuditLogDto(
     string Id,
