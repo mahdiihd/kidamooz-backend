@@ -105,11 +105,14 @@ builder.Services.AddAuthorization();
 
 var adminOrigins = builder.Configuration.GetSection("Cors:AdminOrigins").Get<string[]>()
     ?? ["http://localhost:4200"];
+var appOrigins = builder.Configuration.GetSection("Cors:AppOrigins").Get<string[]>()
+    ?? [];
+var allowedOrigins = adminOrigins.Concat(appOrigins).Distinct().ToArray();
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Admin", policy =>
-        policy.WithOrigins(adminOrigins)
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
