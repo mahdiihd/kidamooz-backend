@@ -92,9 +92,13 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
             && Uri.TryCreate(settings.EndpointUrl, UriKind.Absolute, out var endpoint))
         {
             Add($"https://{settings.BucketName}.{endpoint.Host}");
+            Add($"http://{settings.BucketName}.{endpoint.Host}");
         }
 
         Add("https://kid.storage.c2.liara.site");
+        Add("http://kid.storage.c2.liara.site");
+        Add("https://kidingo.ir");
+
         return seen;
     }
 }

@@ -21,7 +21,7 @@ public static class LiaraConfiguration
             return string.Empty;
 
         var host = new Uri(settings.EndpointUrl).Host;
-        return $"https://{settings.BucketName}.{host}";
+        return $"http://{settings.BucketName}.{host}";
     }
 
     private static void ApplyEnvironmentOverrides(LiaraSettings settings)
