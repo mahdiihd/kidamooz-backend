@@ -97,7 +97,7 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
 
         Add("https://kid.storage.c2.liara.site");
         Add("http://kid.storage.c2.liara.site");
-        Add("https://kidingo.ir");
+        Add("http://kidingo.ir");
 
         return seen;
     }
