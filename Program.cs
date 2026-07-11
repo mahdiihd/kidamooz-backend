@@ -103,31 +103,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-var adminOrigins = builder.Configuration.GetSection("Cors:AdminOrigins").Get<string[]>()
-    ?? ["http://localhost:4200"];
-var appOrigins = builder.Configuration.GetSection("Cors:AppOrigins").Get<string[]>()
-    ?? [];
-string[] defaultAppOrigins =
-[
-    "https://localhost",
-    "http://localhost",
-    "capacitor://localhost",
-    "ionic://localhost",
-    "http://localhost:8100",
-    "http://localhost:4200",
-    "http://127.0.0.1:8100",
-    "http://127.0.0.1:4200"
-];
-var allowedOrigins = adminOrigins
-    .Concat(appOrigins)
-    .Concat(defaultAppOrigins)
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .ToArray();
-
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Admin", policy =>
-        policy.WithOrigins(allowedOrigins)
+        policy.SetIsOriginAllowed(_ => true)
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
