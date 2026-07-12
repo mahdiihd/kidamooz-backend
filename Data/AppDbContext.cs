@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<StoryAudienceSegment> StoryAudienceSegments => Set<StoryAudienceSegment>();
     public DbSet<StoryAudienceUser> StoryAudienceUsers => Set<StoryAudienceUser>();
     public DbSet<StoryViewsDaily> StoryViewsDaily => Set<StoryViewsDaily>();
+    public DbSet<AppOpensDaily> AppOpensDaily => Set<AppOpensDaily>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -147,6 +148,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(x => new { x.ViewDate, x.StoryId });
             e.Property(x => x.StoryId).HasMaxLength(64);
             e.HasOne(x => x.Story).WithMany().HasForeignKey(x => x.StoryId);
+        });
+
+        modelBuilder.Entity<AppOpensDaily>(e =>
+        {
+            e.ToTable("app_opens_daily");
+            e.HasKey(x => x.ViewDate);
         });
 
         modelBuilder.Entity<AuditLog>(e =>
