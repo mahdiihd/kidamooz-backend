@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<StoryAudienceUser> StoryAudienceUsers => Set<StoryAudienceUser>();
     public DbSet<StoryViewsDaily> StoryViewsDaily => Set<StoryViewsDaily>();
     public DbSet<AppOpensDaily> AppOpensDaily => Set<AppOpensDaily>();
+    public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -154,6 +155,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.ToTable("app_opens_daily");
             e.HasKey(x => x.ViewDate);
+        });
+
+        modelBuilder.Entity<DeviceToken>(e =>
+        {
+            e.ToTable("device_tokens");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasDefaultValueSql("NEWSEQUENTIALID()");
+            e.Property(x => x.Token).HasMaxLength(512);
+            e.Property(x => x.Platform).HasMaxLength(32);
+            e.Property(x => x.UserId).HasMaxLength(64);
+            e.Property(x => x.AppVersion).HasMaxLength(64);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.Property(x => x.LastSeenAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasIndex(x => x.Token).IsUnique();
+            e.HasIndex(x => new { x.Platform, x.IsActive });
+            e.HasIndex(x => x.UserId);
         });
 
         modelBuilder.Entity<AuditLog>(e =>

@@ -5,6 +5,7 @@ using Amazon.S3;
 using Microsoft.AspNetCore.HttpOverrides;
 using Kidamooz.Data;
 using Kidamooz.Infrastructure.Auth;
+using Kidamooz.Infrastructure.Push;
 using Kidamooz.Infrastructure.Storage;
 using Kidamooz.Repositories;
 using Kidamooz.Repositories.Interfaces;
@@ -74,6 +75,7 @@ builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IAudienceRepository, AudienceRepository>();
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IAnalyticsRepository, AnalyticsRepository>();
+builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
@@ -81,12 +83,20 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IMediaStorageService, LiaraMediaStorageService>();
 builder.Services.AddScoped<IMediaService, MediaService>();
 builder.Services.AddScoped<IAudienceService, AudienceService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IStoryService, StoryService>();
 builder.Services.AddScoped<IPublicService, PublicService>();
+
+var firebaseSettings = builder.Configuration.GetSection("Firebase").Get<FirebaseSettings>() ?? new FirebaseSettings();
+ApplyFirebaseEnvOverrides(firebaseSettings);
+builder.Services.AddSingleton(firebaseSettings);
+builder.Services.AddHttpClient("firebase");
+builder.Services.AddSingleton<IPushNotificationSender, FirebasePushNotificationSender>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -231,4 +241,17 @@ void OpenSwaggerInBrowser()
     {
         app.Logger.LogWarning(ex, "Could not open Swagger at {SwaggerUrl}", swaggerUrl);
     }
+}
+
+static void ApplyFirebaseEnvOverrides(FirebaseSettings settings)
+{
+    settings.ProjectId = Environment.GetEnvironmentVariable("Firebase__ProjectId")
+        ?? Environment.GetEnvironmentVariable("FIREBASE_PROJECT_ID")
+        ?? settings.ProjectId;
+    settings.ClientEmail = Environment.GetEnvironmentVariable("Firebase__ClientEmail")
+        ?? Environment.GetEnvironmentVariable("FIREBASE_CLIENT_EMAIL")
+        ?? settings.ClientEmail;
+    settings.PrivateKey = Environment.GetEnvironmentVariable("Firebase__PrivateKey")
+        ?? Environment.GetEnvironmentVariable("FIREBASE_PRIVATE_KEY")
+        ?? settings.PrivateKey;
 }

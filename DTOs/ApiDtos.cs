@@ -225,3 +225,18 @@ public record PublicStoryDetailDto(
         Id, Title, TitleFa, TitleEn, Description, DescriptionFa, DescriptionEn,
         CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax, CategoryId,
         Featured, SortOrder, Published, PublishedAt);
+
+public record DeviceRegisterRequestDto(string Token, string Platform = "android", string? AppVersion = null, string? UserId = null);
+
+public record DeviceUnregisterRequestDto(string Token);
+
+public record NotificationDataDto(string? StoryId);
+
+public record BroadcastNotificationRequestDto(
+    string Title,
+    string Body,
+    string Audience = "all",
+    List<string>? UserIds = null,
+    NotificationDataDto? Data = null);
+
+public record BroadcastNotificationResponseDto(int TotalTokens, int SuccessCount, int FailureCount);
