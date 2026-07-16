@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Kidamooz.Data;
+using Kidamooz.Domain;
 using Kidamooz.Domain.Entities;
 using Kidamooz.DTOs;
 using Kidamooz.Infrastructure.Storage;
@@ -80,6 +81,7 @@ public class StoryService(
             form.AgeMin,
             form.AgeMax,
             form.CategoryId,
+            ProgressIcons.Normalize(form.ProgressIcon),
             form.Featured,
             form.SortOrder,
             form.Published,
@@ -127,6 +129,7 @@ public class StoryService(
             form.AgeMin,
             form.AgeMax,
             form.CategoryId,
+            ProgressIcons.Normalize(form.ProgressIcon),
             form.Featured,
             form.SortOrder,
             form.Published,
@@ -362,6 +365,7 @@ public class StoryService(
         DescriptionEn = payload.Description.En,
         CoverUrl = payload.CoverUrl,
         AudioUrl = payload.AudioUrl,
+        ProgressIcon = ProgressIcons.Normalize(payload.ProgressIcon),
         DurationSeconds = payload.DurationSeconds,
         AgeMin = payload.AgeMin,
         AgeMax = payload.AgeMax,
@@ -383,6 +387,7 @@ public class StoryService(
         story.DescriptionEn = payload.Description.En;
         story.CoverUrl = payload.CoverUrl;
         story.AudioUrl = payload.AudioUrl;
+        story.ProgressIcon = ProgressIcons.Normalize(payload.ProgressIcon);
         story.DurationSeconds = payload.DurationSeconds;
         story.AgeMin = payload.AgeMin;
         story.AgeMax = payload.AgeMax;

@@ -82,6 +82,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.DescriptionEn).HasMaxLength(2000);
             e.Property(x => x.CoverUrl).HasMaxLength(1000);
             e.Property(x => x.AudioUrl).HasMaxLength(1000);
+            e.Property(x => x.ProgressIcon).HasMaxLength(32).HasDefaultValue("star");
             e.Property(x => x.Visibility).HasMaxLength(20).HasDefaultValue("public");
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");

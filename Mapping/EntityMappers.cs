@@ -1,5 +1,6 @@
 using Kidamooz.Domain.Entities;
 using Kidamooz.DTOs;
+using Kidamooz.Domain;
 
 namespace Kidamooz.Mapping;
 
@@ -23,6 +24,7 @@ public static class EntityMappers
         story.AgeMin,
         story.AgeMax,
         story.CategoryId,
+        ProgressIcons.Normalize(story.ProgressIcon),
         story.Featured,
         story.SortOrder,
         story.Published,
@@ -39,6 +41,7 @@ public static class EntityMappers
         story.AgeMin,
         story.AgeMax,
         story.CategoryId,
+        ProgressIcons.Normalize(story.ProgressIcon),
         story.Featured,
         story.SortOrder,
         story.Published,
@@ -93,6 +96,7 @@ public static class EntityMappers
         story.AgeMin,
         story.AgeMax,
         story.CategoryId,
+        ProgressIcons.Normalize(story.ProgressIcon),
         story.Featured,
         story.SortOrder,
         story.Published,
@@ -112,6 +116,7 @@ public static class EntityMappers
         story.AgeMin,
         story.AgeMax,
         story.CategoryId,
+        ProgressIcons.Normalize(story.ProgressIcon),
         story.Featured,
         story.SortOrder,
         story.Published,

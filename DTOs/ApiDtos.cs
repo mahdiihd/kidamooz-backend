@@ -20,6 +20,7 @@ public record StoryDto(
     int AgeMin,
     int AgeMax,
     string CategoryId,
+    string ProgressIcon,
     bool Featured,
     int SortOrder,
     bool Published,
@@ -36,6 +37,7 @@ public record StoryDetailDto(
     int AgeMin,
     int AgeMax,
     string CategoryId,
+    string ProgressIcon,
     bool Featured,
     int SortOrder,
     bool Published,
@@ -43,7 +45,7 @@ public record StoryDetailDto(
     StoryAccessDto Access,
     List<StoryChapterDto>? Chapters) : StoryDto(
         Id, Title, Description, CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax,
-        CategoryId, Featured, SortOrder, Published, PublishedAt, Access);
+        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access);
 
 public record StoryListResponseDto(List<StoryDto> Items, int Total);
 
@@ -57,6 +59,7 @@ public record StoryPayloadDto(
     int AgeMin,
     int AgeMax,
     string CategoryId,
+    string ProgressIcon,
     bool Featured,
     int SortOrder,
     bool Published,
@@ -163,6 +166,7 @@ public class StorySaveForm
     public int AgeMin { get; set; }
     public int AgeMax { get; set; }
     public string CategoryId { get; set; } = string.Empty;
+    public string ProgressIcon { get; set; } = "star";
     public bool Featured { get; set; }
     public int SortOrder { get; set; }
     public bool Published { get; set; }
@@ -198,6 +202,7 @@ public record PublicStoryDto(
     int AgeMin,
     int AgeMax,
     string CategoryId,
+    string ProgressIcon,
     bool Featured,
     int SortOrder,
     bool Published,
@@ -217,13 +222,14 @@ public record PublicStoryDetailDto(
     int AgeMin,
     int AgeMax,
     string CategoryId,
+    string ProgressIcon,
     bool Featured,
     int SortOrder,
     bool Published,
     DateTimeOffset? PublishedAt,
     List<StoryChapterDto>? Chapters) : PublicStoryDto(
         Id, Title, TitleFa, TitleEn, Description, DescriptionFa, DescriptionEn,
-        CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax, CategoryId,
+        CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax, CategoryId, ProgressIcon,
         Featured, SortOrder, Published, PublishedAt);
 
 public record DeviceRegisterRequestDto(string Token, string Platform = "android", string? AppVersion = null, string? UserId = null);
