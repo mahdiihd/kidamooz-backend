@@ -1,0 +1,11 @@
+bin/
+obj/
+.git/
+.env
+appsettings.Production.json
+*.md
+docs/
+scripts/
+liara.json
+**/.vs/
+**/node_modules/

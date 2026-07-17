@@ -53,7 +53,9 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             Key = key,
             InputStream = content,
             ContentType = contentType,
-            AutoCloseStream = false
+            AutoCloseStream = false,
+            UseChunkEncoding = false,
+            DisableDefaultChecksumValidation = true
         };
 
         try

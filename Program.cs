@@ -53,8 +53,11 @@ builder.Services.AddSingleton<IAmazonS3>(_ =>
     {
         ServiceURL = liara.EndpointUrl,
         ForcePathStyle = true,
+        AuthenticationRegion = "us-east-1",
         Timeout = TimeSpan.FromSeconds(30),
-        MaxErrorRetry = 2
+        MaxErrorRetry = 2,
+        RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+        ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED
     };
 
     var credentials = new BasicAWSCredentials(liara.AccessKey, liara.SecretKey);
