@@ -3,6 +3,7 @@ using Kidamooz.Domain.Entities;
 using Kidamooz.DTOs;
 using Kidamooz.Infrastructure;
 using Kidamooz.Infrastructure.Ai;
+using Kidamooz.Infrastructure.Auth;
 using Kidamooz.Infrastructure.Security;
 using Kidamooz.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,11 @@ public class StoryDraftService(
 {
     public const string PersonalCategoryId = "personal";
     public const int DailyCreateLimit = 1;
+
+    private static readonly HashSet<string> UnlimitedMobiles = new(StringComparer.Ordinal)
+    {
+        "09196079395"
+    };
 
     public async Task<StoryDraftDto> CreateFromDrawingAsync(
         string userId,
@@ -126,6 +132,12 @@ public class StoryDraftService(
     {
         EnsureUser(userId);
         await FailStaleGeneratingAsync(userId, ct);
+
+        if (await IsUnlimitedUserAsync(userId, ct))
+        {
+            return new StoryDraftQuotaDto(true, DailyCreateLimit, 0, null);
+        }
+
         var usedToday = await CountTodayCreatesAsync(userId, ct);
         var canCreate = usedToday < DailyCreateLimit;
         return new StoryDraftQuotaDto(
@@ -345,9 +357,22 @@ public class StoryDraftService(
     private async Task EnsureDailyCreateAllowedAsync(string userId, CancellationToken ct)
     {
         await FailStaleGeneratingAsync(userId, ct);
+        if (await IsUnlimitedUserAsync(userId, ct))
+            return;
+
         var usedToday = await CountTodayCreatesAsync(userId, ct);
         if (usedToday >= DailyCreateLimit)
             throw new DailyStoryLimitException(TehranTime.StartOfTomorrowUtc());
+    }
+
+    private async Task<bool> IsUnlimitedUserAsync(string userId, CancellationToken ct)
+    {
+        var mobile = await db.AppUsers.AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => x.Mobile)
+            .FirstOrDefaultAsync(ct);
+        var normalized = MobileNormalizer.Normalize(mobile);
+        return !string.IsNullOrEmpty(normalized) && UnlimitedMobiles.Contains(normalized);
     }
 
     private Task<int> CountTodayCreatesAsync(string userId, CancellationToken ct)
