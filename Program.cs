@@ -4,6 +4,7 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Microsoft.AspNetCore.HttpOverrides;
 using Kidamooz.Data;
+using Kidamooz.Infrastructure.Ai;
 using Kidamooz.Infrastructure.Auth;
 using Kidamooz.Infrastructure.Push;
 using Kidamooz.Infrastructure.Storage;
@@ -94,12 +95,34 @@ builder.Services.AddScoped<IAudienceService, AudienceService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IStoryService, StoryService>();
 builder.Services.AddScoped<IPublicService, PublicService>();
+builder.Services.AddScoped<IStoryDraftService, StoryDraftService>();
+builder.Services.AddScoped<IMemberAuthService, MemberAuthService>();
+builder.Services.AddScoped<IMemberContext, MemberContext>();
 
 var firebaseSettings = builder.Configuration.GetSection("Firebase").Get<FirebaseSettings>() ?? new FirebaseSettings();
 ApplyFirebaseEnvOverrides(firebaseSettings);
 builder.Services.AddSingleton(firebaseSettings);
 builder.Services.AddHttpClient("firebase");
 builder.Services.AddSingleton<IPushNotificationSender, FirebasePushNotificationSender>();
+
+var geminiSettings = builder.Configuration.GetSection("Gemini").Get<GeminiSettings>() ?? new GeminiSettings();
+ApplyGeminiEnvOverrides(geminiSettings);
+builder.Services.AddSingleton(geminiSettings);
+builder.Services.AddHttpClient("gemini", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
+var coverImageSettings = builder.Configuration.GetSection("CoverImage").Get<CoverImageSettings>() ?? new CoverImageSettings();
+coverImageSettings.BaseUrl = Environment.GetEnvironmentVariable("CoverImage__BaseUrl")
+    ?? Environment.GetEnvironmentVariable("COVER_IMAGE_BASE_URL")
+    ?? coverImageSettings.BaseUrl;
+builder.Services.AddSingleton(coverImageSettings);
+builder.Services.AddHttpClient("cover-image", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
+builder.Services.AddSingleton<ICoverImageGenerator, PollinationsCoverImageGenerator>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -191,6 +214,28 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        var headers = context.Response.Headers;
+        headers["X-Content-Type-Options"] = "nosniff";
+        headers["X-Frame-Options"] = "DENY";
+        headers["Referrer-Policy"] = "no-referrer";
+
+        var path = context.Request.Path.Value ?? string.Empty;
+        if (!path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+        {
+            headers["Content-Security-Policy"] =
+                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+        }
+
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -257,4 +302,17 @@ static void ApplyFirebaseEnvOverrides(FirebaseSettings settings)
     settings.PrivateKey = Environment.GetEnvironmentVariable("Firebase__PrivateKey")
         ?? Environment.GetEnvironmentVariable("FIREBASE_PRIVATE_KEY")
         ?? settings.PrivateKey;
+}
+
+static void ApplyGeminiEnvOverrides(GeminiSettings settings)
+{
+    settings.ApiKey = Environment.GetEnvironmentVariable("Gemini__ApiKey")
+        ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+        ?? settings.ApiKey;
+    settings.Model = Environment.GetEnvironmentVariable("Gemini__Model")
+        ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
+        ?? settings.Model;
+    settings.BaseUrl = Environment.GetEnvironmentVariable("Gemini__BaseUrl")
+        ?? Environment.GetEnvironmentVariable("GEMINI_BASE_URL")
+        ?? settings.BaseUrl;
 }

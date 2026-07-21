@@ -29,13 +29,32 @@ public class JwtTokenService(IOptions<JwtSettings> options)
             new Claim(ClaimTypes.Role, user.Role)
         };
 
+        return WriteToken(claims, TimeSpan.FromMinutes(_settings.AccessTokenMinutes));
+    }
+
+    public string GenerateMemberAccessToken(AppUser user)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id),
+            new(ClaimTypes.Role, "member"),
+            new(ClaimTypes.Name, user.DisplayName)
+        };
+        if (!string.IsNullOrWhiteSpace(user.Mobile))
+            claims.Add(new Claim(ClaimTypes.MobilePhone, user.Mobile));
+
+        return WriteToken(claims, TimeSpan.FromDays(30));
+    }
+
+    private string WriteToken(IEnumerable<Claim> claims, TimeSpan lifetime)
+    {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(
             _settings.Issuer,
             _settings.Audience,
             claims,
-            expires: DateTime.UtcNow.AddMinutes(_settings.AccessTokenMinutes),
+            expires: DateTime.UtcNow.Add(lifetime),
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

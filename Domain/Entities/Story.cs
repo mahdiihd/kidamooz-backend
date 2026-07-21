@@ -19,6 +19,8 @@ public class Story
     public bool Published { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
     public string Visibility { get; set; } = "public";
+    public string? AuthorName { get; set; }
+    public string? AuthorUserId { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

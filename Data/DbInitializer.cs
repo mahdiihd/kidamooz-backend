@@ -52,6 +52,24 @@ public static class DbInitializer
             );
         }
 
+        if (!await db.Categories.AnyAsync(x => x.Id == Services.StoryDraftService.PersonalCategoryId))
+        {
+            var now = DateTimeOffset.UtcNow;
+            db.Categories.Add(new Category
+            {
+                Id = Services.StoryDraftService.PersonalCategoryId,
+                Slug = "personal",
+                TitleFa = "قصه‌های من",
+                TitleEn = "My Stories",
+                IconUrl = string.Empty,
+                Color = "#7bc950",
+                SortOrder = 999,
+                Published = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+
         await db.SaveChangesAsync();
     }
 }

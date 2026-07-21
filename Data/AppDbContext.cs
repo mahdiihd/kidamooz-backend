@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AppOpensDaily> AppOpensDaily => Set<AppOpensDaily>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<StoryDraft> StoryDrafts => Set<StoryDraft>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -84,6 +85,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.AudioUrl).HasMaxLength(1000);
             e.Property(x => x.ProgressIcon).HasMaxLength(32).HasDefaultValue("star");
             e.Property(x => x.Visibility).HasMaxLength(20).HasDefaultValue("public");
+            e.Property(x => x.AuthorName).HasMaxLength(200);
+            e.Property(x => x.AuthorUserId).HasMaxLength(64);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.ToTable(t => t.HasCheckConstraint("CK_stories_visibility", "[Visibility] IN ('public', 'restricted')"));
@@ -122,6 +125,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Id).HasMaxLength(64);
             e.Property(x => x.DisplayName).HasMaxLength(200);
             e.Property(x => x.Email).HasMaxLength(256);
+            e.Property(x => x.Mobile).HasMaxLength(20);
+            e.Property(x => x.PasswordHash).HasMaxLength(200);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasIndex(x => x.Mobile).IsUnique().HasFilter("[Mobile] IS NOT NULL");
         });
 
         modelBuilder.Entity<StoryAudienceSegment>(e =>
@@ -187,6 +195,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Details).HasMaxLength(1000);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.HasIndex(x => x.CreatedAt).IsDescending();
+        });
+
+        modelBuilder.Entity<StoryDraft>(e =>
+        {
+            e.ToTable("story_drafts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasDefaultValueSql("NEWSEQUENTIALID()");
+            e.Property(x => x.DeviceId).HasMaxLength(128);
+            e.Property(x => x.UserId).HasMaxLength(64);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.DrawingUrl).HasMaxLength(1000);
+            e.Property(x => x.CoverUrl).HasMaxLength(1000);
+            e.Property(x => x.TitleFa).HasMaxLength(300);
+            e.Property(x => x.DescriptionFa).HasMaxLength(2000);
+            e.Property(x => x.StoryScript).HasMaxLength(8000);
+            e.Property(x => x.AudioUrl).HasMaxLength(1000);
+            e.Property(x => x.PublishedStoryId).HasMaxLength(64);
+            e.Property(x => x.ErrorMessage).HasMaxLength(500);
+            e.Property(x => x.RejectReason).HasMaxLength(500);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasOne(x => x.User).WithMany(x => x.StoryDrafts).HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => new { x.DeviceId, x.UpdatedAt });
+            e.HasIndex(x => new { x.UserId, x.UpdatedAt });
+            e.HasIndex(x => x.Status);
         });
     }
 }

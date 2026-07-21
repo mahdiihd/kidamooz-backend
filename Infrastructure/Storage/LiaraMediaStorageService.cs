@@ -15,7 +15,17 @@ public interface IMediaStorageService
 public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IMediaStorageService
 {
     private static readonly HashSet<string> ImageTypes = ["image/webp", "image/jpeg", "image/png"];
-    private static readonly HashSet<string> AudioTypes = ["audio/mpeg", "audio/mp4"];
+    private static readonly HashSet<string> AudioTypes =
+    [
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/aac",
+        "audio/m4a",
+        "audio/x-m4a",
+        "audio/webm",
+        "audio/wav",
+        "audio/ogg"
+    ];
 
     public UploadUrlResponseDto CreateUploadUrl(string fileName, string contentType, string mediaType)
     {
@@ -94,6 +104,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             "cover" => "covers/",
             "audio" => "audio/",
             "icon" => "icons/",
+            "drawing" => "drawings/",
             _ => null
         };
 
@@ -176,6 +187,10 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             ".webp" => "image/webp",
             ".mp3" => "audio/mpeg",
             ".m4a" or ".mp4" => "audio/mp4",
+            ".aac" => "audio/aac",
+            ".webm" => "audio/webm",
+            ".wav" => "audio/wav",
+            ".ogg" => "audio/ogg",
             _ => normalized
         };
     }
@@ -184,7 +199,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
     {
         var valid = mediaType switch
         {
-            "cover" or "icon" => ImageTypes.Contains(contentType),
+            "cover" or "icon" or "drawing" => ImageTypes.Contains(contentType),
             "audio" => AudioTypes.Contains(contentType),
             _ => false
         };
@@ -196,6 +211,8 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
     private static string BuildObjectKey(string mediaType, string fileName)
     {
         var ext = Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(ext))
+            ext = mediaType == "audio" ? ".m4a" : ".jpg";
         var id = Guid.NewGuid().ToString("N");
 
         return mediaType switch
@@ -203,6 +220,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
             "cover" => $"covers/{id}{ext}",
             "audio" => $"audio/{id}{ext}",
             "icon" => $"icons/{id}{ext}",
+            "drawing" => $"drawings/{id}{ext}",
             _ => $"misc/{id}{ext}"
         };
     }

@@ -4,6 +4,7 @@ using Kidamooz.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace back.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260718200820_StoryDrafts")]
+    partial class StoryDrafts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -91,11 +94,6 @@ namespace back.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetimeoffset")
-                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
-
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -109,24 +107,7 @@ namespace back.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<string>("Mobile")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("PasswordHash")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetimeoffset")
-                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("Mobile")
-                        .IsUnique()
-                        .HasFilter("[Mobile] IS NOT NULL");
 
                     b.ToTable("app_users", (string)null);
                 });
@@ -387,14 +368,6 @@ namespace back.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<string>("AuthorName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("AuthorUserId")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
                     b.Property<string>("CategoryId")
                         .IsRequired()
                         .HasColumnType("nvarchar(64)");
@@ -602,10 +575,6 @@ namespace back.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
-                    b.Property<string>("RejectReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -615,9 +584,6 @@ namespace back.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(8000)
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTimeOffset?>("SubmittedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("TitleFa")
                         .IsRequired()
@@ -632,17 +598,11 @@ namespace back.Data.Migrations
                     b.Property<bool>("UsedFallbackCover")
                         .HasColumnType("bit");
 
-                    b.Property<string>("UserId")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Status");
 
                     b.HasIndex("DeviceId", "UpdatedAt");
-
-                    b.HasIndex("UserId", "UpdatedAt");
 
                     b.ToTable("story_drafts", (string)null);
                 });
@@ -737,16 +697,6 @@ namespace back.Data.Migrations
                     b.Navigation("Story");
                 });
 
-            modelBuilder.Entity("Kidamooz.Domain.Entities.StoryDraft", b =>
-                {
-                    b.HasOne("Kidamooz.Domain.Entities.AppUser", "User")
-                        .WithMany("StoryDrafts")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Kidamooz.Domain.Entities.StoryViewsDaily", b =>
                 {
                     b.HasOne("Kidamooz.Domain.Entities.Story", "Story")
@@ -766,8 +716,6 @@ namespace back.Data.Migrations
             modelBuilder.Entity("Kidamooz.Domain.Entities.AppUser", b =>
                 {
                     b.Navigation("StoryAudienceUsers");
-
-                    b.Navigation("StoryDrafts");
                 });
 
             modelBuilder.Entity("Kidamooz.Domain.Entities.AudienceSegment", b =>

@@ -25,7 +25,8 @@ public record StoryDto(
     int SortOrder,
     bool Published,
     DateTimeOffset? PublishedAt,
-    StoryAccessDto Access);
+    StoryAccessDto Access,
+    string? AuthorName = null);
 
 public record StoryDetailDto(
     string Id,
@@ -43,9 +44,10 @@ public record StoryDetailDto(
     bool Published,
     DateTimeOffset? PublishedAt,
     StoryAccessDto Access,
-    List<StoryChapterDto>? Chapters) : StoryDto(
+    List<StoryChapterDto>? Chapters,
+    string? AuthorName = null) : StoryDto(
         Id, Title, Description, CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax,
-        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access);
+        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access, AuthorName);
 
 public record StoryListResponseDto(List<StoryDto> Items, int Total);
 
@@ -206,7 +208,8 @@ public record PublicStoryDto(
     bool Featured,
     int SortOrder,
     bool Published,
-    DateTimeOffset? PublishedAt);
+    DateTimeOffset? PublishedAt,
+    string? AuthorName = null);
 
 public record PublicStoryDetailDto(
     string Id,
@@ -227,10 +230,11 @@ public record PublicStoryDetailDto(
     int SortOrder,
     bool Published,
     DateTimeOffset? PublishedAt,
-    List<StoryChapterDto>? Chapters) : PublicStoryDto(
+    List<StoryChapterDto>? Chapters,
+    string? AuthorName = null) : PublicStoryDto(
         Id, Title, TitleFa, TitleEn, Description, DescriptionFa, DescriptionEn,
         CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax, CategoryId, ProgressIcon,
-        Featured, SortOrder, Published, PublishedAt);
+        Featured, SortOrder, Published, PublishedAt, AuthorName);
 
 public record DeviceRegisterRequestDto(string Token, string Platform = "android", string? AppVersion = null, string? UserId = null);
 

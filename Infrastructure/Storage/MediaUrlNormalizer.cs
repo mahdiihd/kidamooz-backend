@@ -17,21 +17,43 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
     public string Normalize(string? url)
     {
         if (string.IsNullOrWhiteSpace(url))
-            return url ?? string.Empty;
+            return string.Empty;
+
+        var trimmed = url.Trim();
+        if (!IsSafeMediaUrl(trimmed))
+            return string.Empty;
 
         var publicBase = settings.PublicBaseUrl.TrimEnd('/');
         if (string.IsNullOrWhiteSpace(publicBase))
-            return url;
+            return trimmed;
 
         foreach (var legacyBase in GetLegacyBases())
         {
-            if (!url.StartsWith(legacyBase, StringComparison.OrdinalIgnoreCase))
+            if (!trimmed.StartsWith(legacyBase, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            return publicBase + url[legacyBase.Length..];
+            return publicBase + trimmed[legacyBase.Length..];
         }
 
-        return url;
+        return trimmed;
+    }
+
+    public static bool IsSafeMediaUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        var trimmed = url.Trim();
+        if (trimmed.StartsWith('/') && !trimmed.StartsWith("//", StringComparison.Ordinal))
+            return !trimmed.Contains('\0') && !trimmed.Contains('<');
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+            return false;
+
+        return uri.Scheme is "http" or "https"
+            && string.IsNullOrEmpty(uri.UserInfo)
+            && !trimmed.Contains('<')
+            && !trimmed.Contains('\0');
     }
 
     public CategoryDto Normalize(CategoryDto dto) =>
