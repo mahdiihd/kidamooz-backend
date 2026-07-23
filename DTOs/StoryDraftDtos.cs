@@ -27,7 +27,8 @@ public record StoryDraftDto(
     string? AuthorMobile,
     DateTimeOffset? SubmittedAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool CanRemoveFromProfile);
 
 public record StoryDraftQuotaDto(
     bool CanCreateToday,

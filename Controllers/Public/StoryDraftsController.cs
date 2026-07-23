@@ -158,6 +158,28 @@ public class StoryDraftsController(
         return await Execute(() => storyDraftService.SubmitForReviewAsync(RequireUserId(), id, ct));
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> RemoveFromProfile(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            await storyDraftService.RemoveFromProfileAsync(RequireUserId(), id, ct);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
+        }
+    }
+
     private async Task<ActionResult<StoryDraftDto>> Execute(Func<Task<StoryDraftDto>> action)
     {
         try

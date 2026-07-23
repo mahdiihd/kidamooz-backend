@@ -22,9 +22,12 @@ public interface IStoryDraftService
     Task<StoryDraftDto> UploadAudioAsync(string userId, Guid id, IFormFile audio, int? durationSeconds, CancellationToken ct = default);
     Task<StoryDraftDto> SubmitForReviewAsync(string userId, Guid id, CancellationToken ct = default);
     Task<List<StoryDraftDto>> AdminListPendingAsync(CancellationToken ct = default);
+    Task<List<StoryDraftDto>> AdminListAsync(string? status, CancellationToken ct = default);
     Task<StoryDraftDto> AdminGetAsync(Guid id, CancellationToken ct = default);
     Task<ApproveStoryDraftResponseDto> AdminApproveAsync(Guid id, CancellationToken ct = default);
     Task<StoryDraftDto> AdminRejectAsync(Guid id, string? reason, CancellationToken ct = default);
+    Task RemoveFromProfileAsync(string userId, Guid id, CancellationToken ct = default);
+    Task MarkDraftsDeletedForStoryAsync(string storyId, CancellationToken ct = default);
 }
 
 public class StoryDraftService(
@@ -163,11 +166,13 @@ public class StoryDraftService(
     {
         EnsureUser(userId);
         await FailStaleGeneratingAsync(userId, ct);
+        await SyncDeletedPublishedDraftsAsync(userId, ct);
         var items = await db.StoryDrafts.AsNoTracking()
             .Include(x => x.User)
             .Where(x => x.UserId == userId
                         && x.Status != StoryDraftStatuses.Failed
-                        && x.Status != StoryDraftStatuses.Generating)
+                        && x.Status != StoryDraftStatuses.Generating
+                        && x.Status != StoryDraftStatuses.Archived)
             .OrderByDescending(x => x.UpdatedAt)
             .Take(50)
             .ToListAsync(ct);
@@ -333,6 +338,62 @@ public class StoryDraftService(
         return items.Select(d => ToDto(d, d.User)).ToList();
     }
 
+    public async Task<List<StoryDraftDto>> AdminListAsync(string? status, CancellationToken ct = default)
+    {
+        await SyncDeletedPublishedDraftsAsync(userId: null, ct);
+        var query = db.StoryDrafts.AsNoTracking()
+            .Include(x => x.User)
+            .Where(x => x.Status != StoryDraftStatuses.Generating
+                        && x.Status != StoryDraftStatuses.Failed
+                        && x.Status != StoryDraftStatuses.Archived);
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var normalized = status.Trim().ToLowerInvariant();
+            query = query.Where(x => x.Status == normalized);
+        }
+
+        var items = await query
+            .OrderByDescending(x => x.UpdatedAt)
+            .Take(200)
+            .ToListAsync(ct);
+        return items.Select(d => ToDto(d, d.User)).ToList();
+    }
+
+    public async Task RemoveFromProfileAsync(string userId, Guid id, CancellationToken ct = default)
+    {
+        var draft = await GetOwnedAsync(userId, id, ct);
+        if (draft.Status == StoryDraftStatuses.Published)
+            throw new InvalidOperationException("قصه منتشرشده را نمی‌توانی از پروفایل حذف کنی.");
+        if (draft.Status == StoryDraftStatuses.PendingReview)
+            throw new InvalidOperationException("قصه در صف بررسی است و فعلاً قابل حذف از پروفایل نیست.");
+
+        draft.Status = StoryDraftStatuses.Archived;
+        draft.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task MarkDraftsDeletedForStoryAsync(string storyId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(storyId))
+            return;
+
+        var drafts = await db.StoryDrafts
+            .Where(x => x.PublishedStoryId == storyId && x.Status == StoryDraftStatuses.Published)
+            .ToListAsync(ct);
+        if (drafts.Count == 0)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var draft in drafts)
+        {
+            draft.Status = StoryDraftStatuses.Deleted;
+            draft.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task<StoryDraftDto> AdminGetAsync(Guid id, CancellationToken ct = default)
     {
         var draft = await db.StoryDrafts.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == id, ct)
@@ -477,6 +538,42 @@ public class StoryDraftService(
             ct);
     }
 
+    private async Task SyncDeletedPublishedDraftsAsync(string? userId, CancellationToken ct)
+    {
+        var query = db.StoryDrafts.Where(x => x.Status == StoryDraftStatuses.Published
+                                             && x.PublishedStoryId != null);
+        if (!string.IsNullOrWhiteSpace(userId))
+            query = query.Where(x => x.UserId == userId);
+
+        var drafts = await query.ToListAsync(ct);
+        if (drafts.Count == 0)
+            return;
+
+        var storyIds = drafts
+            .Select(x => x.PublishedStoryId!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var liveIds = await db.Stories.AsNoTracking()
+            .Where(x => storyIds.Contains(x.Id) && x.DeletedAt == null)
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+        var liveSet = liveIds.ToHashSet(StringComparer.Ordinal);
+
+        var changed = false;
+        var now = DateTimeOffset.UtcNow;
+        foreach (var draft in drafts)
+        {
+            if (liveSet.Contains(draft.PublishedStoryId!))
+                continue;
+            draft.Status = StoryDraftStatuses.Deleted;
+            draft.UpdatedAt = now;
+            changed = true;
+        }
+
+        if (changed)
+            await db.SaveChangesAsync(ct);
+    }
+
     private async Task FailStaleGeneratingAsync(string userId, CancellationToken ct)
     {
         var cutoff = DateTimeOffset.UtcNow.AddMinutes(-15);
@@ -573,7 +670,11 @@ public class StoryDraftService(
         user?.Mobile,
         d.SubmittedAt,
         d.CreatedAt,
-        d.UpdatedAt);
+        d.UpdatedAt,
+        CanRemoveFromProfile(d.Status));
+
+    private static bool CanRemoveFromProfile(string status) =>
+        status is not (StoryDraftStatuses.Published or StoryDraftStatuses.PendingReview or StoryDraftStatuses.Generating);
 
     private string? SafeUrl(string? url)
     {

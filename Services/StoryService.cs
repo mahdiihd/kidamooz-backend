@@ -39,6 +39,7 @@ public class StoryService(
     IAuditService auditService,
     IMediaService mediaService,
     IMediaUrlNormalizer mediaUrls,
+    IStoryDraftService storyDraftService,
     AppDbContext db) : IStoryService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -190,6 +191,7 @@ public class StoryService(
         story.DeletedAt = DateTimeOffset.UtcNow;
         story.UpdatedAt = DateTimeOffset.UtcNow;
         await repository.SaveChangesAsync(ct);
+        await storyDraftService.MarkDraftsDeletedForStoryAsync(story.Id, ct);
         await auditService.LogAsync("delete", "story", story.Id, story.TitleFa, ct: ct);
 
         if (wasPublished)

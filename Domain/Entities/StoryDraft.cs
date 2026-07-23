@@ -34,4 +34,6 @@ public static class StoryDraftStatuses
     public const string Published = "published";
     public const string Rejected = "rejected";
     public const string Failed = "failed";
+    public const string Deleted = "deleted";
+    public const string Archived = "archived";
 }

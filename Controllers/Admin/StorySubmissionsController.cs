@@ -11,8 +11,18 @@ namespace Kidamooz.Controllers.Admin;
 public class StorySubmissionsController(IStoryDraftService storyDraftService) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<StoryDraftDto>>> ListPending(CancellationToken ct) =>
-        Ok(await storyDraftService.AdminListPendingAsync(ct));
+    public async Task<ActionResult<List<StoryDraftDto>>> List(
+        [FromQuery] string? status,
+        CancellationToken ct)
+    {
+        if (string.Equals(status, "pending_review", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(await storyDraftService.AdminListPendingAsync(ct));
+        }
+
+        return Ok(await storyDraftService.AdminListAsync(status, ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<StoryDraftDto>> Get(Guid id, CancellationToken ct)
