@@ -98,6 +98,9 @@ builder.Services.AddScoped<IPublicService, PublicService>();
 builder.Services.AddScoped<IStoryDraftService, StoryDraftService>();
 builder.Services.AddScoped<IMemberAuthService, MemberAuthService>();
 builder.Services.AddScoped<IMemberContext, MemberContext>();
+builder.Services.AddScoped<IChildProfileService, ChildProfileService>();
+builder.Services.AddScoped<IMemberFavoriteService, MemberFavoriteService>();
+builder.Services.AddScoped<IMemberEngagementService, MemberEngagementService>();
 
 var firebaseSettings = builder.Configuration.GetSection("Firebase").Get<FirebaseSettings>() ?? new FirebaseSettings();
 ApplyFirebaseEnvOverrides(firebaseSettings);

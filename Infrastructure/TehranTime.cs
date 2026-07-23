@@ -15,6 +15,12 @@ public static class TehranTime
 
     public static DateTimeOffset StartOfTomorrowUtc() => StartOfTodayUtc().AddDays(1);
 
+    public static DateOnly TodayTehran()
+    {
+        var local = Now;
+        return new DateOnly(local.Year, local.Month, local.Day);
+    }
+
     private static TimeZoneInfo ResolveZone()
     {
         try

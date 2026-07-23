@@ -20,6 +20,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<StoryDraft> StoryDrafts => Set<StoryDraft>();
+    public DbSet<ChildProfile> ChildProfiles => Set<ChildProfile>();
+    public DbSet<MemberFavorite> MemberFavorites => Set<MemberFavorite>();
+    public DbSet<StoryOfTheDay> StoriesOfTheDay => Set<StoryOfTheDay>();
+    public DbSet<WeeklyChallenge> WeeklyChallenges => Set<WeeklyChallenge>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +131,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Email).HasMaxLength(256);
             e.Property(x => x.Mobile).HasMaxLength(20);
             e.Property(x => x.PasswordHash).HasMaxLength(200);
+            e.Property(x => x.PlanTier).HasMaxLength(20).HasDefaultValue(MemberPlans.Free);
+            e.Property(x => x.LastPlayedStoryId).HasMaxLength(64);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.HasIndex(x => x.Mobile).IsUnique().HasFilter("[Mobile] IS NOT NULL");
@@ -207,6 +213,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.DrawingUrl).HasMaxLength(1000);
             e.Property(x => x.CoverUrl).HasMaxLength(1000);
+            e.Property(x => x.CoverPrompt).HasMaxLength(1000);
+            e.Property(x => x.ChallengeTag).HasMaxLength(64);
             e.Property(x => x.TitleFa).HasMaxLength(300);
             e.Property(x => x.DescriptionFa).HasMaxLength(2000);
             e.Property(x => x.StoryScript).HasMaxLength(8000);
@@ -221,6 +229,55 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.DeviceId, x.UpdatedAt });
             e.HasIndex(x => new { x.UserId, x.UpdatedAt });
             e.HasIndex(x => x.Status);
+        });
+
+        modelBuilder.Entity<ChildProfile>(e =>
+        {
+            e.ToTable("child_profiles");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasDefaultValueSql("NEWSEQUENTIALID()");
+            e.Property(x => x.UserId).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.AvatarKey).HasMaxLength(32);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasOne(x => x.User).WithMany(x => x.Children).HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.UserId);
+        });
+
+        modelBuilder.Entity<MemberFavorite>(e =>
+        {
+            e.ToTable("member_favorites");
+            e.HasKey(x => new { x.UserId, x.StoryId });
+            e.Property(x => x.UserId).HasMaxLength(64);
+            e.Property(x => x.StoryId).HasMaxLength(64);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasOne(x => x.User).WithMany(x => x.Favorites).HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Story).WithMany().HasForeignKey(x => x.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<StoryOfTheDay>(e =>
+        {
+            e.ToTable("stories_of_the_day");
+            e.HasKey(x => x.PickDate);
+            e.Property(x => x.StoryId).HasMaxLength(64);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasOne(x => x.Story).WithMany().HasForeignKey(x => x.StoryId);
+        });
+
+        modelBuilder.Entity<WeeklyChallenge>(e =>
+        {
+            e.ToTable("weekly_challenges");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasDefaultValueSql("NEWSEQUENTIALID()");
+            e.Property(x => x.TitleFa).HasMaxLength(200);
+            e.Property(x => x.ThemeTag).HasMaxLength(64);
+            e.Property(x => x.DescriptionFa).HasMaxLength(500);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            e.HasIndex(x => new { x.IsActive, x.WeekStart });
         });
     }
 }

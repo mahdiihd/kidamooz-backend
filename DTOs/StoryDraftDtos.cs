@@ -17,6 +17,7 @@ public record StoryDraftDto(
     string TitleFa,
     string DescriptionFa,
     string StoryScript,
+    string? ChallengeTag,
     string? AudioUrl,
     int? DurationSeconds,
     string? PublishedStoryId,
@@ -32,12 +33,15 @@ public record StoryDraftQuotaDto(
     bool CanCreateToday,
     int DailyLimit,
     int UsedToday,
-    DateTimeOffset? NextAvailableAt);
+    DateTimeOffset? NextAvailableAt,
+    string PlanTier,
+    bool IsPlus);
 
 public record UpdateStoryDraftRequestDto(
     string? TitleFa,
     string? DescriptionFa,
-    string? StoryScript);
+    string? StoryScript,
+    string? ChallengeTag);
 
 public record RejectStoryDraftRequestDto(string? Reason);
 

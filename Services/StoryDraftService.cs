@@ -17,6 +17,8 @@ public interface IStoryDraftService
     Task<List<StoryDraftDto>> ListAsync(string userId, CancellationToken ct = default);
     Task<StoryDraftDto> GetAsync(string userId, Guid id, CancellationToken ct = default);
     Task<StoryDraftDto> UpdateAsync(string userId, Guid id, UpdateStoryDraftRequestDto request, CancellationToken ct = default);
+    Task<StoryDraftDto> RewriteAsync(string userId, Guid id, RewriteStoryDraftRequestDto request, CancellationToken ct = default);
+    Task<StoryDraftDto> RegenerateCoverAsync(string userId, Guid id, RegenerateCoverRequestDto? request, CancellationToken ct = default);
     Task<StoryDraftDto> UploadAudioAsync(string userId, Guid id, IFormFile audio, int? durationSeconds, CancellationToken ct = default);
     Task<StoryDraftDto> SubmitForReviewAsync(string userId, Guid id, CancellationToken ct = default);
     Task<List<StoryDraftDto>> AdminListPendingAsync(CancellationToken ct = default);
@@ -31,10 +33,12 @@ public class StoryDraftService(
     IMediaUrlNormalizer mediaUrls,
     IGeminiStoryClient gemini,
     ICoverImageGenerator coverGenerator,
+    IMemberEngagementService engagement,
     ILogger<StoryDraftService> logger) : IStoryDraftService
 {
     public const string PersonalCategoryId = "personal";
-    public const int DailyCreateLimit = 1;
+    public const int FreeDailyCreateLimit = 1;
+    public const int PlusDailyCreateLimit = 5;
 
     private static readonly HashSet<string> UnlimitedMobiles = new(StringComparer.Ordinal)
     {
@@ -116,6 +120,7 @@ public class StoryDraftService(
             draft.Status = StoryDraftStatuses.Ready;
             draft.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            await engagement.RecordCreateActivityAsync(userId, ct);
             return ToDto(draft, user);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -133,18 +138,25 @@ public class StoryDraftService(
         EnsureUser(userId);
         await FailStaleGeneratingAsync(userId, ct);
 
+        var user = await db.AppUsers.AsNoTracking().FirstAsync(x => x.Id == userId, ct);
+        var isPlus = MemberEngagementService.IsPlusActive(user);
+        var dailyLimit = isPlus ? PlusDailyCreateLimit : FreeDailyCreateLimit;
+        var planTier = isPlus ? MemberPlans.Plus : MemberPlans.Free;
+
         if (await IsUnlimitedUserAsync(userId, ct))
         {
-            return new StoryDraftQuotaDto(true, DailyCreateLimit, 0, null);
+            return new StoryDraftQuotaDto(true, dailyLimit, 0, null, planTier, isPlus);
         }
 
         var usedToday = await CountTodayCreatesAsync(userId, ct);
-        var canCreate = usedToday < DailyCreateLimit;
+        var canCreate = usedToday < dailyLimit;
         return new StoryDraftQuotaDto(
             canCreate,
-            DailyCreateLimit,
+            dailyLimit,
             usedToday,
-            canCreate ? null : TehranTime.StartOfTomorrowUtc());
+            canCreate ? null : TehranTime.StartOfTomorrowUtc(),
+            planTier,
+            isPlus);
     }
 
     public async Task<List<StoryDraftDto>> ListAsync(string userId, CancellationToken ct = default)
@@ -184,6 +196,80 @@ public class StoryDraftService(
             draft.DescriptionFa = PlainTextSanitizer.Clean(request.DescriptionFa, 2000);
         if (!string.IsNullOrWhiteSpace(request.StoryScript))
             draft.StoryScript = PlainTextSanitizer.Clean(request.StoryScript, 8000);
+        if (request.ChallengeTag is not null)
+            draft.ChallengeTag = string.IsNullOrWhiteSpace(request.ChallengeTag)
+                ? null
+                : PlainTextSanitizer.Clean(request.ChallengeTag, 64);
+
+        draft.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToDto(draft, draft.User);
+    }
+
+    public async Task<StoryDraftDto> RewriteAsync(
+        string userId,
+        Guid id,
+        RewriteStoryDraftRequestDto request,
+        CancellationToken ct = default)
+    {
+        var draft = await GetOwnedAsync(userId, id, ct);
+        if (draft.Status is StoryDraftStatuses.Generating or StoryDraftStatuses.Failed or StoryDraftStatuses.PendingReview or StoryDraftStatuses.Published)
+            throw new InvalidOperationException("این پیش‌نویس قابل بازنویسی نیست.");
+
+        var mode = string.IsNullOrWhiteSpace(request.Mode) ? "polish" : request.Mode.Trim();
+        var content = await gemini.RewriteAsync(
+            draft.TitleFa,
+            draft.DescriptionFa,
+            draft.StoryScript,
+            mode,
+            ct);
+        ApplyGeneratedContent(draft, content);
+        draft.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToDto(draft, draft.User);
+    }
+
+    public async Task<StoryDraftDto> RegenerateCoverAsync(
+        string userId,
+        Guid id,
+        RegenerateCoverRequestDto? request,
+        CancellationToken ct = default)
+    {
+        var draft = await GetOwnedAsync(userId, id, ct);
+        if (draft.Status is StoryDraftStatuses.Generating or StoryDraftStatuses.Failed or StoryDraftStatuses.PendingReview or StoryDraftStatuses.Published)
+            throw new InvalidOperationException("کاور این پیش‌نویس قابل تغییر نیست.");
+
+        var prompt = !string.IsNullOrWhiteSpace(request?.PromptHint)
+            ? PlainTextSanitizer.Clean(request!.PromptHint!, 1000)
+            : draft.CoverPrompt;
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            prompt =
+                $"Children's book illustration for Persian kids story titled {draft.TitleFa}, colorful, joyful, no text on image";
+        }
+
+        draft.CoverPrompt = prompt;
+        var coverBytes = await coverGenerator.GenerateAsync(prompt, ct);
+        if (coverBytes is { Length: > 0 })
+        {
+            await using var coverStream = new MemoryStream(coverBytes);
+            draft.CoverUrl = await storage.UploadAsync(
+                coverStream,
+                $"{draft.Id:N}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.jpg",
+                "image/jpeg",
+                "cover",
+                ct);
+            draft.UsedFallbackCover = false;
+        }
+        else if (!string.IsNullOrWhiteSpace(draft.DrawingUrl))
+        {
+            draft.CoverUrl = draft.DrawingUrl;
+            draft.UsedFallbackCover = true;
+        }
+        else
+        {
+            throw new InvalidOperationException("تولید کاور جدید ناموفق بود.");
+        }
 
         draft.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -360,8 +446,13 @@ public class StoryDraftService(
         if (await IsUnlimitedUserAsync(userId, ct))
             return;
 
+        var user = await db.AppUsers.AsNoTracking().FirstAsync(x => x.Id == userId, ct);
+        var dailyLimit = MemberEngagementService.IsPlusActive(user)
+            ? PlusDailyCreateLimit
+            : FreeDailyCreateLimit;
+
         var usedToday = await CountTodayCreatesAsync(userId, ct);
-        if (usedToday >= DailyCreateLimit)
+        if (usedToday >= dailyLimit)
             throw new DailyStoryLimitException(TehranTime.StartOfTomorrowUtc());
     }
 
@@ -460,6 +551,7 @@ public class StoryDraftService(
         draft.TitleFa = PlainTextSanitizer.Clean(content.TitleFa, 300);
         draft.DescriptionFa = PlainTextSanitizer.Clean(content.DescriptionFa, 2000);
         draft.StoryScript = PlainTextSanitizer.Clean(content.StoryScript, 8000);
+        draft.CoverPrompt = PlainTextSanitizer.Clean(content.CoverPrompt, 1000);
     }
 
     private StoryDraftDto ToDto(StoryDraft d, AppUser? user) => new(
@@ -471,6 +563,7 @@ public class StoryDraftService(
         PlainTextSanitizer.Clean(d.TitleFa, 300),
         PlainTextSanitizer.Clean(d.DescriptionFa, 2000),
         PlainTextSanitizer.Clean(d.StoryScript, 8000),
+        PlainTextSanitizer.CleanOptional(d.ChallengeTag, 64),
         SafeUrl(d.AudioUrl),
         d.DurationSeconds,
         d.PublishedStoryId,

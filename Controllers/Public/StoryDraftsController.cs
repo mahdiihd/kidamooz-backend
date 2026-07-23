@@ -98,6 +98,25 @@ public class StoryDraftsController(
         return await Execute(() => storyDraftService.UpdateAsync(RequireUserId(), id, request, ct));
     }
 
+    [HttpPost("{id:guid}/rewrite")]
+    public async Task<ActionResult<StoryDraftDto>> Rewrite(
+        Guid id,
+        [FromBody] RewriteStoryDraftRequestDto? request,
+        CancellationToken ct)
+    {
+        return await Execute(() =>
+            storyDraftService.RewriteAsync(RequireUserId(), id, request ?? new RewriteStoryDraftRequestDto(null), ct));
+    }
+
+    [HttpPost("{id:guid}/cover/regenerate")]
+    public async Task<ActionResult<StoryDraftDto>> RegenerateCover(
+        Guid id,
+        [FromBody] RegenerateCoverRequestDto? request,
+        CancellationToken ct)
+    {
+        return await Execute(() => storyDraftService.RegenerateCoverAsync(RequireUserId(), id, request, ct));
+    }
+
     [HttpPost("{id:guid}/audio")]
     [RequestSizeLimit(40 * 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = 40 * 1024 * 1024)]

@@ -126,6 +126,110 @@ public class GeminiStoryClient(
             PlainTextSanitizer.Clean(coverPrompt, 1000));
     }
 
+    public async Task<GeneratedStoryContent> RewriteAsync(
+        string titleFa,
+        string descriptionFa,
+        string storyScript,
+        string mode,
+        CancellationToken ct = default)
+    {
+        if (!settings.IsConfigured)
+            throw new InvalidOperationException("Gemini API key is not configured.");
+
+        var modeHint = string.Equals(mode, "shorter", StringComparison.OrdinalIgnoreCase)
+            ? "متن را کوتاه‌تر و روان‌تر کن (حدود ۱ دقیقه خواندن)."
+            : "متن را بازنویسی کن؛ شادتر، واضح‌تر و مناسب‌تر برای کودک ۳ تا ۸ سال.";
+
+        var prompt = $"""
+            تو یک نویسنده‌ی قصه‌های کودکانه فارسی هستی.
+            {modeHint}
+            قوانین:
+            - زبان خروجی فقط فارسی
+            - ملایم، شاد، بدون خشونت و ترس
+            - coverPrompt را انگلیسی برای تصویرگری کتاب کودک بنویس
+            فقط JSON خام با کلیدهای titleFa, descriptionFa, storyScript, coverPrompt
+
+            عنوان فعلی: {titleFa}
+            توضیح فعلی: {descriptionFa}
+            متن فعلی:
+            {storyScript}
+            """;
+
+        var model = string.IsNullOrWhiteSpace(settings.Model) ? "gemini-flash-latest" : settings.Model;
+        var baseUrl = string.IsNullOrWhiteSpace(settings.BaseUrl)
+            ? "https://generativelanguage.googleapis.com"
+            : settings.BaseUrl.TrimEnd('/');
+        var url =
+            $"{baseUrl}/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(settings.ApiKey)}";
+
+        var payload = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt }
+                    }
+                }
+            },
+            generationConfig = new
+            {
+                temperature = 0.7,
+                responseMimeType = "application/json"
+            }
+        };
+
+        var client = httpClientFactory.CreateClient("gemini");
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.SendAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Gemini rewrite failed to reach the server");
+            throw new InvalidOperationException("سرویس هوش مصنوعی در دسترس نیست. کمی بعد دوباره تلاش کنید.");
+        }
+
+        using var _ = response;
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Gemini rewrite failed: {Status} {Body}", (int)response.StatusCode, Truncate(body));
+            throw new InvalidOperationException("بازنویسی قصه ناموفق بود. کمی بعد دوباره تلاش کنید.");
+        }
+
+        using var doc = JsonDocument.Parse(body);
+        var text = ExtractText(doc.RootElement);
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("پاسخ هوش مصنوعی خالی بود.");
+
+        var json = ExtractJsonObject(text);
+        var parsed = JsonSerializer.Deserialize<GeminiStoryJson>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        }) ?? throw new InvalidOperationException("پاسخ هوش مصنوعی نامعتبر بود.");
+
+        if (string.IsNullOrWhiteSpace(parsed.TitleFa) || string.IsNullOrWhiteSpace(parsed.StoryScript))
+            throw new InvalidOperationException("متن بازنویسی‌شده ناقص بود.");
+
+        var coverPrompt = string.IsNullOrWhiteSpace(parsed.CoverPrompt)
+            ? $"Children's book illustration for story {parsed.TitleFa}, colorful, joyful, no text"
+            : parsed.CoverPrompt;
+
+        return new GeneratedStoryContent(
+            PlainTextSanitizer.Clean(parsed.TitleFa, 300),
+            PlainTextSanitizer.Clean(parsed.DescriptionFa ?? parsed.TitleFa, 2000),
+            PlainTextSanitizer.Clean(parsed.StoryScript, 8000),
+            PlainTextSanitizer.Clean(coverPrompt, 1000));
+    }
+
     private static string ExtractText(JsonElement root)
     {
         if (!root.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)

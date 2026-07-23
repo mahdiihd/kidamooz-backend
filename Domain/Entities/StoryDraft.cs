@@ -8,6 +8,8 @@ public class StoryDraft
     public string Status { get; set; } = StoryDraftStatuses.Generating;
     public string? DrawingUrl { get; set; }
     public string? CoverUrl { get; set; }
+    public string? CoverPrompt { get; set; }
+    public string? ChallengeTag { get; set; }
     public bool UsedFallbackCover { get; set; }
     public string TitleFa { get; set; } = string.Empty;
     public string DescriptionFa { get; set; } = string.Empty;
