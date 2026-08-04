@@ -132,7 +132,13 @@ builder.Services.AddHttpClient("cover-image", client =>
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
-builder.Services.AddSingleton<ICoverImageGenerator, PollinationsCoverImageGenerator>();
+builder.Services.AddSingleton<PollinationsCoverImageGenerator>();
+builder.Services.AddSingleton<GeminiCoverImageGenerator>();
+builder.Services.AddSingleton<ICoverImageGenerator>(sp =>
+    new CascadingCoverImageGenerator(
+        sp.GetRequiredService<GeminiCoverImageGenerator>(),
+        sp.GetRequiredService<PollinationsCoverImageGenerator>(),
+        sp.GetRequiredService<ILogger<CascadingCoverImageGenerator>>()));
 builder.Services.Configure<NarrationSettings>(builder.Configuration.GetSection(NarrationSettings.SectionName));
 builder.Services.AddSingleton<IAudioNarrationService, EdgeTtsAudioNarrationService>();
 
@@ -325,6 +331,9 @@ static void ApplyGeminiEnvOverrides(GeminiSettings settings)
     settings.Model = Environment.GetEnvironmentVariable("Gemini__Model")
         ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
         ?? settings.Model;
+    settings.CoverImageModel = Environment.GetEnvironmentVariable("Gemini__CoverImageModel")
+        ?? Environment.GetEnvironmentVariable("GEMINI_COVER_IMAGE_MODEL")
+        ?? settings.CoverImageModel;
     settings.BaseUrl = Environment.GetEnvironmentVariable("Gemini__BaseUrl")
         ?? Environment.GetEnvironmentVariable("GEMINI_BASE_URL")
         ?? settings.BaseUrl;
