@@ -6,4 +6,5 @@ public record GeneratedStoryContent(
     string TitleEn,
     string DescriptionEn,
     string StoryScript,
+    string StoryScriptSpeech,
     string CoverPrompt);

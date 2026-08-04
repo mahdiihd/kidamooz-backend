@@ -51,6 +51,8 @@ public record UpdateStoryDraftRequestDto(
 
 public record RejectStoryDraftRequestDto(string? Reason);
 
+public record ApproveStoryDraftRequestDto(string? PreferredNarration);
+
 public record ApproveStoryDraftResponseDto(
     Guid DraftId,
     string StoryId,

@@ -38,11 +38,14 @@ public class StorySubmissionsController(IStoryDraftService storyDraftService) : 
     }
 
     [HttpPost("{id:guid}/approve")]
-    public async Task<ActionResult<ApproveStoryDraftResponseDto>> Approve(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ApproveStoryDraftResponseDto>> Approve(
+        Guid id,
+        [FromBody] ApproveStoryDraftRequestDto? request,
+        CancellationToken ct)
     {
         try
         {
-            return Ok(await storyDraftService.AdminApproveAsync(id, ct));
+            return Ok(await storyDraftService.AdminApproveAsync(id, request, ct));
         }
         catch (KeyNotFoundException ex)
         {

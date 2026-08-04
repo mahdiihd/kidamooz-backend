@@ -16,15 +16,16 @@ public class GeminiStoryClient(
         Create a short bilingual story based on that drawing.
 
         Rules:
-        - titleFa, descriptionFa, storyScript MUST be Persian (Farsi)
-        - titleEn, descriptionEn MUST be natural English for the same story
+        - titleFa, descriptionFa, storyScript MUST be Persian (Farsi) WITHOUT Arabic diacritics (no tashkeel/harakat)
+        - storyScriptSpeech MUST be the SAME Persian story WITH full Arabic diacritics (اعراب) and clear punctuation (، . ! ؟ …) so a TTS voice can narrate naturally; keep meaning identical to storyScript
+        - titleEn, descriptionEn MUST be natural English (Latin script only). Never copy Persian into English fields.
         - Suitable for ages 3–8
         - Gentle, joyful, no violence or fear
         - storyScript is for reading aloud by a parent/child, about 1–2 minutes (roughly 180–350 Persian words)
-        - coverPrompt in English for a children's book illustration from this drawing: colorful, joyful, children's book illustration style, no text on the image
+        - coverPrompt in English for a children's book illustration inspired by this drawing: colorful, joyful, children's book illustration style, no text on the image
 
         Return ONLY raw JSON with no markdown:
-        {"titleFa":"...","descriptionFa":"...","titleEn":"...","descriptionEn":"...","storyScript":"...","coverPrompt":"..."}
+        {"titleFa":"...","descriptionFa":"...","titleEn":"...","descriptionEn":"...","storyScript":"...","storyScriptSpeech":"...","coverPrompt":"..."}
         Plain text only; no HTML, links, or scripts.
         """;
 
@@ -81,11 +82,12 @@ public class GeminiStoryClient(
             تو یک نویسنده‌ی قصه‌های کودکانه هستی.
             {modeHint}
             قوانین:
-            - titleFa, descriptionFa, storyScript به فارسی
-            - titleEn, descriptionEn ترجمه طبیعی انگلیسی همان محتوا
+            - titleFa, descriptionFa, storyScript به فارسی بدون اعراب
+            - storyScriptSpeech همان متن با اعراب کامل و نقطه‌گذاری مناسب خواندن صوتی
+            - titleEn, descriptionEn انگلیسی طبیعی با حروف لاتین؛ هرگز فارسی را در فیلد انگلیسی کپی نکن
             - ملایم، شاد، بدون خشونت و ترس
             - coverPrompt انگلیسی برای تصویرگری کتاب کودک
-            فقط JSON خام با کلیدهای titleFa, descriptionFa, titleEn, descriptionEn, storyScript, coverPrompt
+            فقط JSON خام با کلیدهای titleFa, descriptionFa, titleEn, descriptionEn, storyScript, storyScriptSpeech, coverPrompt
 
             عنوان فعلی: {titleFa}
             توضیح فعلی: {descriptionFa}
@@ -169,29 +171,145 @@ public class GeminiStoryClient(
         return parsed;
     }
 
+    public async Task<(string TitleEn, string DescriptionEn)> EnsureEnglishAsync(
+        string titleFa,
+        string descriptionFa,
+        string? titleEn,
+        string? descriptionEn,
+        CancellationToken ct = default)
+    {
+        var cleanTitleEn = PlainTextSanitizer.Clean(titleEn, 300);
+        var cleanDescriptionEn = PlainTextSanitizer.Clean(descriptionEn, 2000);
+        if (IsUsableEnglish(cleanTitleEn, titleFa) && IsUsableEnglish(cleanDescriptionEn, descriptionFa))
+            return (cleanTitleEn, cleanDescriptionEn);
+
+        if (!settings.IsConfigured)
+        {
+            return (
+                IsUsableEnglish(cleanTitleEn, titleFa) ? cleanTitleEn : "Children's story",
+                IsUsableEnglish(cleanDescriptionEn, descriptionFa) ? cleanDescriptionEn : "A gentle story for kids.");
+        }
+
+        var prompt =
+            "Translate this Persian children's story metadata into natural English.\n" +
+            "Return ONLY raw JSON with keys titleEn and descriptionEn.\n" +
+            "Use Latin script only. Do not copy Persian text.\n" +
+            $"titleFa: {titleFa}\n" +
+            $"descriptionFa: {descriptionFa}";
+
+        try
+        {
+            var model = string.IsNullOrWhiteSpace(settings.Model) ? "gemini-flash-latest" : settings.Model;
+            var baseUrl = string.IsNullOrWhiteSpace(settings.BaseUrl)
+                ? "https://generativelanguage.googleapis.com"
+                : settings.BaseUrl.TrimEnd('/');
+            var url =
+                $"{baseUrl}/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(settings.ApiKey)}";
+
+            var payload = new
+            {
+                contents = new[]
+                {
+                    new { parts = new object[] { new { text = prompt } } }
+                },
+                generationConfig = new
+                {
+                    temperature = 0.2,
+                    responseMimeType = "application/json"
+                }
+            };
+
+            var client = httpClientFactory.CreateClient("gemini");
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            using var response = await client.SendAsync(request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException("ترجمه انگلیسی ناموفق بود.");
+
+            using var doc = JsonDocument.Parse(body);
+            var text = ExtractText(doc.RootElement);
+            var json = ExtractJsonObject(text);
+            var parsed = JsonSerializer.Deserialize<GeminiEnglishJson>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new GeminiEnglishJson();
+
+            var ensuredTitle = PlainTextSanitizer.Clean(
+                string.IsNullOrWhiteSpace(parsed.TitleEn) ? cleanTitleEn : parsed.TitleEn,
+                300);
+            var ensuredDescription = PlainTextSanitizer.Clean(
+                string.IsNullOrWhiteSpace(parsed.DescriptionEn) ? cleanDescriptionEn : parsed.DescriptionEn,
+                2000);
+
+            if (!IsUsableEnglish(ensuredTitle, titleFa))
+                ensuredTitle = "Children's story";
+            if (!IsUsableEnglish(ensuredDescription, descriptionFa))
+                ensuredDescription = "A gentle story for kids.";
+
+            return (ensuredTitle, ensuredDescription);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "EnsureEnglishAsync failed; using safe fallbacks");
+            return (
+                IsUsableEnglish(cleanTitleEn, titleFa) ? cleanTitleEn : "Children's story",
+                IsUsableEnglish(cleanDescriptionEn, descriptionFa) ? cleanDescriptionEn : "A gentle story for kids.");
+        }
+    }
+
     private static GeneratedStoryContent ToContent(GeminiStoryJson parsed)
     {
         var coverPrompt = string.IsNullOrWhiteSpace(parsed.CoverPrompt)
             ? $"Children's book illustration based on a child's drawing titled {parsed.TitleFa}, colorful, joyful, no text"
             : parsed.CoverPrompt;
 
-        var titleEn = string.IsNullOrWhiteSpace(parsed.TitleEn) ? parsed.TitleFa : parsed.TitleEn;
-        var descriptionFa = string.IsNullOrWhiteSpace(parsed.DescriptionFa) ? parsed.TitleFa : parsed.DescriptionFa;
-        var descriptionEn = string.IsNullOrWhiteSpace(parsed.DescriptionEn) ? descriptionFa : parsed.DescriptionEn;
-        if (string.Equals(descriptionEn, descriptionFa, StringComparison.Ordinal)
-            && !string.IsNullOrWhiteSpace(parsed.TitleEn)
-            && !string.Equals(parsed.TitleEn, parsed.TitleFa, StringComparison.Ordinal))
-        {
-            descriptionEn = parsed.TitleEn;
-        }
+        var titleFa = PlainTextSanitizer.Clean(parsed.TitleFa, 300);
+        var descriptionFa = PlainTextSanitizer.Clean(
+            string.IsNullOrWhiteSpace(parsed.DescriptionFa) ? parsed.TitleFa : parsed.DescriptionFa,
+            2000);
+        var storyScript = PlainTextSanitizer.Clean(parsed.StoryScript, 8000);
+        var storyScriptSpeech = PlainTextSanitizer.Clean(
+            string.IsNullOrWhiteSpace(parsed.StoryScriptSpeech) ? parsed.StoryScript : parsed.StoryScriptSpeech,
+            12000);
+
+        var titleEn = PlainTextSanitizer.Clean(parsed.TitleEn, 300);
+        var descriptionEn = PlainTextSanitizer.Clean(parsed.DescriptionEn, 2000);
+        if (!IsUsableEnglish(titleEn, titleFa))
+            titleEn = string.Empty;
+        if (!IsUsableEnglish(descriptionEn, descriptionFa))
+            descriptionEn = string.Empty;
 
         return new GeneratedStoryContent(
-            PlainTextSanitizer.Clean(parsed.TitleFa, 300),
-            PlainTextSanitizer.Clean(descriptionFa, 2000),
-            PlainTextSanitizer.Clean(titleEn, 300),
-            PlainTextSanitizer.Clean(descriptionEn, 2000),
-            PlainTextSanitizer.Clean(parsed.StoryScript, 8000),
+            titleFa,
+            descriptionFa,
+            titleEn,
+            descriptionEn,
+            storyScript,
+            storyScriptSpeech,
             PlainTextSanitizer.Clean(coverPrompt, 1000));
+    }
+
+    private static bool IsUsableEnglish(string? value, string persianReference)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        if (string.Equals(value.Trim(), persianReference.Trim(), StringComparison.Ordinal))
+            return false;
+        return !ContainsPersianLetters(value);
+    }
+
+    private static bool ContainsPersianLetters(string value)
+    {
+        foreach (var ch in value)
+        {
+            if (ch is >= '\u0600' and <= '\u06FF' or >= '\u0750' and <= '\u077F' or >= '\uFB50' and <= '\uFDFF' or >= '\uFE70' and <= '\uFEFF')
+                return true;
+        }
+
+        return false;
     }
 
     private static string ExtractText(JsonElement root)
@@ -262,7 +380,19 @@ public class GeminiStoryClient(
         [JsonPropertyName("storyScript")]
         public string StoryScript { get; set; } = string.Empty;
 
+        [JsonPropertyName("storyScriptSpeech")]
+        public string? StoryScriptSpeech { get; set; }
+
         [JsonPropertyName("coverPrompt")]
         public string? CoverPrompt { get; set; }
+    }
+
+    private sealed class GeminiEnglishJson
+    {
+        [JsonPropertyName("titleEn")]
+        public string? TitleEn { get; set; }
+
+        [JsonPropertyName("descriptionEn")]
+        public string? DescriptionEn { get; set; }
     }
 }

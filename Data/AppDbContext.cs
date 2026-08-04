@@ -88,6 +88,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.CoverUrl).HasMaxLength(1000);
             e.Property(x => x.AudioUrl).HasMaxLength(1000);
             e.Property(x => x.UploadedAudioUrl).HasMaxLength(1000);
+            e.Property(x => x.PreferredNarration).HasMaxLength(16).HasDefaultValue("ai");
             e.Property(x => x.ProgressIcon).HasMaxLength(32).HasDefaultValue("star");
             e.Property(x => x.Visibility).HasMaxLength(20).HasDefaultValue("public");
             e.Property(x => x.AuthorName).HasMaxLength(200);

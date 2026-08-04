@@ -14,4 +14,11 @@ public interface IGeminiStoryClient
         string storyScript,
         string mode,
         CancellationToken ct = default);
+
+    Task<(string TitleEn, string DescriptionEn)> EnsureEnglishAsync(
+        string titleFa,
+        string descriptionFa,
+        string? titleEn,
+        string? descriptionEn,
+        CancellationToken ct = default);
 }

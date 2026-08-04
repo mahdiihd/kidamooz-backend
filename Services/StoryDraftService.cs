@@ -25,7 +25,10 @@ public interface IStoryDraftService
     Task<List<StoryDraftDto>> AdminListPendingAsync(CancellationToken ct = default);
     Task<List<StoryDraftDto>> AdminListAsync(string? status, CancellationToken ct = default);
     Task<StoryDraftDto> AdminGetAsync(Guid id, CancellationToken ct = default);
-    Task<ApproveStoryDraftResponseDto> AdminApproveAsync(Guid id, CancellationToken ct = default);
+    Task<ApproveStoryDraftResponseDto> AdminApproveAsync(
+        Guid id,
+        ApproveStoryDraftRequestDto? request = null,
+        CancellationToken ct = default);
     Task<StoryDraftDto> AdminRejectAsync(Guid id, string? reason, CancellationToken ct = default);
     Task RemoveFromProfileAsync(string userId, Guid id, CancellationToken ct = default);
     Task MarkDraftsDeletedForStoryAsync(string storyId, CancellationToken ct = default);
@@ -115,28 +118,24 @@ public class StoryDraftService(
 
             ApplyGeneratedContent(draft, content);
 
-            var coverTask = GenerateCoverBytesAsync(content.CoverPrompt, ct);
-            var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
+            var coverTask = RequireCoverBytesAsync(content.CoverPrompt, ct);
+            var speechText = string.IsNullOrWhiteSpace(content.StoryScriptSpeech)
+                ? content.StoryScript
+                : content.StoryScriptSpeech;
+            var audioTask = GenerateNarrationSafelyAsync(draft.Id, speechText, ct);
             await Task.WhenAll(coverTask, audioTask);
 
             var coverBytes = await coverTask;
-            if (coverBytes is { Length: > 0 })
+            await using (var coverStream = new MemoryStream(coverBytes))
             {
-                await using var coverStream = new MemoryStream(coverBytes);
                 draft.CoverUrl = await storage.UploadAsync(
                     coverStream,
                     $"{draft.Id:N}.jpg",
                     "image/jpeg",
                     "cover",
                     ct);
-                draft.UsedFallbackCover = false;
             }
-            else
-            {
-                draft.CoverUrl = draft.DrawingUrl;
-                draft.UsedFallbackCover = true;
-                logger.LogWarning("Using drawing as fallback cover for draft {DraftId}", draft.Id);
-            }
+            draft.UsedFallbackCover = false;
 
             draft.AudioUrl = await audioTask;
             draft.Status = StoryDraftStatuses.Ready;
@@ -277,27 +276,15 @@ public class StoryDraftService(
         }
 
         draft.CoverPrompt = prompt;
-        var coverBytes = await coverGenerator.GenerateAsync(prompt, ct);
-        if (coverBytes is { Length: > 0 })
-        {
-            await using var coverStream = new MemoryStream(coverBytes);
-            draft.CoverUrl = await storage.UploadAsync(
-                coverStream,
-                $"{draft.Id:N}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.jpg",
-                "image/jpeg",
-                "cover",
-                ct);
-            draft.UsedFallbackCover = false;
-        }
-        else if (!string.IsNullOrWhiteSpace(draft.DrawingUrl))
-        {
-            draft.CoverUrl = draft.DrawingUrl;
-            draft.UsedFallbackCover = true;
-        }
-        else
-        {
-            throw new InvalidOperationException("تولید کاور جدید ناموفق بود.");
-        }
+        var coverBytes = await RequireCoverBytesAsync(prompt, ct);
+        await using var coverStream = new MemoryStream(coverBytes);
+        draft.CoverUrl = await storage.UploadAsync(
+            coverStream,
+            $"{draft.Id:N}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.jpg",
+            "image/jpeg",
+            "cover",
+            ct);
+        draft.UsedFallbackCover = false;
 
         draft.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -433,7 +420,10 @@ public class StoryDraftService(
         return ToDto(draft, draft.User);
     }
 
-    public async Task<ApproveStoryDraftResponseDto> AdminApproveAsync(Guid id, CancellationToken ct = default)
+    public async Task<ApproveStoryDraftResponseDto> AdminApproveAsync(
+        Guid id,
+        ApproveStoryDraftRequestDto? request = null,
+        CancellationToken ct = default)
     {
         var draft = await db.StoryDrafts.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == id, ct)
             ?? throw new KeyNotFoundException("پیش‌نویس یافت نشد.");
@@ -455,23 +445,25 @@ public class StoryDraftService(
 
         var titleFa = PlainTextSanitizer.Clean(draft.TitleFa, 300);
         var descriptionFa = PlainTextSanitizer.Clean(draft.DescriptionFa, 2000);
-        var titleEn = PlainTextSanitizer.Clean(
-            string.IsNullOrWhiteSpace(draft.TitleEn) ? titleFa : draft.TitleEn,
-            300);
-        var descriptionEn = PlainTextSanitizer.Clean(
-            string.IsNullOrWhiteSpace(draft.DescriptionEn) ? descriptionFa : draft.DescriptionEn,
-            2000);
+        var (titleEn, descriptionEn) = await gemini.EnsureEnglishAsync(
+            titleFa,
+            descriptionFa,
+            draft.TitleEn,
+            draft.DescriptionEn,
+            ct);
+
         var coverUrl = mediaUrls.Normalize(draft.CoverUrl);
-        var audioUrl = mediaUrls.Normalize(draft.AudioUrl);
+        var aiAudioUrl = string.IsNullOrWhiteSpace(draft.AudioUrl) ? null : mediaUrls.Normalize(draft.AudioUrl);
         var uploadedAudioUrl = string.IsNullOrWhiteSpace(draft.UploadedAudioUrl)
             ? null
             : mediaUrls.Normalize(draft.UploadedAudioUrl);
         if (string.IsNullOrWhiteSpace(coverUrl))
             throw new InvalidOperationException("آدرس فایل‌های قصه نامعتبر است.");
-        if (string.IsNullOrWhiteSpace(audioUrl) && string.IsNullOrWhiteSpace(uploadedAudioUrl))
+        if (string.IsNullOrWhiteSpace(aiAudioUrl) && string.IsNullOrWhiteSpace(uploadedAudioUrl))
             throw new InvalidOperationException("آدرس فایل‌های قصه نامعتبر است.");
-        if (string.IsNullOrWhiteSpace(audioUrl))
-            audioUrl = uploadedAudioUrl!;
+
+        var preferredNarration = ResolvePreferredNarration(request?.PreferredNarration, aiAudioUrl, uploadedAudioUrl);
+        var storedAiAudioUrl = aiAudioUrl ?? uploadedAudioUrl!;
 
         var durationSeconds = ResolveDurationSeconds(draft);
         var now = DateTimeOffset.UtcNow;
@@ -488,8 +480,9 @@ public class StoryDraftService(
                 descriptionFa,
                 descriptionEn,
                 coverUrl,
-                audioUrl,
+                storedAiAudioUrl,
                 uploadedAudioUrl,
+                preferredNarration,
                 durationSeconds,
                 authorName,
                 draft.UserId,
@@ -519,8 +512,9 @@ public class StoryDraftService(
                 descriptionFa,
                 descriptionEn,
                 coverUrl,
-                audioUrl,
+                storedAiAudioUrl,
                 uploadedAudioUrl,
+                preferredNarration,
                 durationSeconds,
                 authorName,
                 draft.UserId,
@@ -554,6 +548,7 @@ public class StoryDraftService(
         string coverUrl,
         string audioUrl,
         string? uploadedAudioUrl,
+        string preferredNarration,
         int durationSeconds,
         string authorName,
         string? authorUserId,
@@ -567,12 +562,26 @@ public class StoryDraftService(
         story.CoverUrl = coverUrl;
         story.AudioUrl = audioUrl;
         story.UploadedAudioUrl = uploadedAudioUrl;
+        story.PreferredNarration = preferredNarration;
         story.DurationSeconds = durationSeconds;
         story.AuthorName = authorName;
         story.AuthorUserId = authorUserId;
         story.Published = true;
         story.Visibility = "public";
         story.UpdatedAt = now;
+    }
+
+    private static string ResolvePreferredNarration(
+        string? requested,
+        string? aiAudioUrl,
+        string? uploadedAudioUrl)
+    {
+        var normalized = string.Equals(requested, "user", StringComparison.OrdinalIgnoreCase) ? "user" : "ai";
+        if (normalized == "user" && !string.IsNullOrWhiteSpace(uploadedAudioUrl))
+            return "user";
+        if (!string.IsNullOrWhiteSpace(aiAudioUrl))
+            return "ai";
+        return string.IsNullOrWhiteSpace(uploadedAudioUrl) ? "ai" : "user";
     }
 
     private static int ResolveDurationSeconds(StoryDraft draft)
@@ -602,8 +611,19 @@ public class StoryDraftService(
         return ToDto(draft, draft.User);
     }
 
-    private Task<byte[]?> GenerateCoverBytesAsync(string coverPrompt, CancellationToken ct) =>
-        coverGenerator.GenerateAsync(coverPrompt, ct);
+    private async Task<byte[]> RequireCoverBytesAsync(string coverPrompt, CancellationToken ct)
+    {
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            var coverBytes = await coverGenerator.GenerateAsync(coverPrompt, ct);
+            if (coverBytes is { Length: > 0 })
+                return coverBytes;
+
+            logger.LogWarning("AI cover generation attempt {Attempt} failed for prompt length {Length}", attempt, coverPrompt.Length);
+        }
+
+        throw new InvalidOperationException("تولید کاور با هوش مصنوعی ناموفق بود. دوباره تلاش کنید.");
+    }
 
     private async Task<string?> GenerateNarrationSafelyAsync(
         Guid storyId,

@@ -27,7 +27,8 @@ public record StoryDto(
     DateTimeOffset? PublishedAt,
     StoryAccessDto Access,
     string? AuthorName = null,
-    string? UploadedAudioUrl = null);
+    string? UploadedAudioUrl = null,
+    string PreferredNarration = "ai");
 
 public record StoryDetailDto(
     string Id,
@@ -47,9 +48,10 @@ public record StoryDetailDto(
     StoryAccessDto Access,
     List<StoryChapterDto>? Chapters,
     string? AuthorName = null,
-    string? UploadedAudioUrl = null) : StoryDto(
+    string? UploadedAudioUrl = null,
+    string PreferredNarration = "ai") : StoryDto(
         Id, Title, Description, CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax,
-        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access, AuthorName, UploadedAudioUrl);
+        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access, AuthorName, UploadedAudioUrl, PreferredNarration);
 
 public record StoryListResponseDto(List<StoryDto> Items, int Total);
 
@@ -225,7 +227,8 @@ public record PublicStoryDto(
     bool Published,
     DateTimeOffset? PublishedAt,
     string? AuthorName = null,
-    string? UploadedAudioUrl = null);
+    string? UploadedAudioUrl = null,
+    string PreferredNarration = "ai");
 
 public record PublicStoryDetailDto(
     string Id,
@@ -248,10 +251,11 @@ public record PublicStoryDetailDto(
     DateTimeOffset? PublishedAt,
     List<StoryChapterDto>? Chapters,
     string? AuthorName = null,
-    string? UploadedAudioUrl = null) : PublicStoryDto(
+    string? UploadedAudioUrl = null,
+    string PreferredNarration = "ai") : PublicStoryDto(
         Id, Title, TitleFa, TitleEn, Description, DescriptionFa, DescriptionEn,
         CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax, CategoryId, ProgressIcon,
-        Featured, SortOrder, Published, PublishedAt, AuthorName, UploadedAudioUrl);
+        Featured, SortOrder, Published, PublishedAt, AuthorName, UploadedAudioUrl, PreferredNarration);
 
 public record DeviceRegisterRequestDto(string Token, string Platform = "android", string? AppVersion = null, string? UserId = null);
 

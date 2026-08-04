@@ -11,6 +11,7 @@ public class Story
     public string CoverUrl { get; set; } = string.Empty;
     public string AudioUrl { get; set; } = string.Empty;
     public string? UploadedAudioUrl { get; set; }
+    public string PreferredNarration { get; set; } = "ai";
     public string ProgressIcon { get; set; } = "star";
     public int DurationSeconds { get; set; }
     public int AgeMin { get; set; }
