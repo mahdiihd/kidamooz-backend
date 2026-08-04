@@ -13,8 +13,11 @@ public class StoryDraft
     public bool UsedFallbackCover { get; set; }
     public string TitleFa { get; set; } = string.Empty;
     public string DescriptionFa { get; set; } = string.Empty;
+    public string TitleEn { get; set; } = string.Empty;
+    public string DescriptionEn { get; set; } = string.Empty;
     public string StoryScript { get; set; } = string.Empty;
     public string? AudioUrl { get; set; }
+    public string? UploadedAudioUrl { get; set; }
     public int? DurationSeconds { get; set; }
     public string? PublishedStoryId { get; set; }
     public string? ErrorMessage { get; set; }

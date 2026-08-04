@@ -10,6 +10,7 @@ public class Story
     public string DescriptionEn { get; set; } = string.Empty;
     public string CoverUrl { get; set; } = string.Empty;
     public string AudioUrl { get; set; } = string.Empty;
+    public string? UploadedAudioUrl { get; set; }
     public string ProgressIcon { get; set; } = "star";
     public int DurationSeconds { get; set; }
     public int AgeMin { get; set; }

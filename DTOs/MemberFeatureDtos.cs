@@ -29,6 +29,14 @@ public record StoryOfTheDayDto(
     string? CoverUrl,
     int DurationSeconds);
 
+public record AdminStoryOfTheDayDto(
+    DateOnly PickDate,
+    string StoryId,
+    string TitleFa,
+    bool IsValid);
+
+public record SetStoryOfTheDayRequestDto(string StoryId);
+
 public record WeeklyChallengeDto(
     Guid Id,
     string TitleFa,
@@ -36,6 +44,26 @@ public record WeeklyChallengeDto(
     string DescriptionFa,
     DateOnly WeekStart,
     DateOnly WeekEnd);
+
+public record WeeklyChallengeAdminDto(
+    Guid Id,
+    string TitleFa,
+    string ThemeTag,
+    string DescriptionFa,
+    DateOnly WeekStart,
+    DateOnly WeekEnd,
+    bool IsActive,
+    DateTimeOffset CreatedAt);
+
+public record UpsertWeeklyChallengeRequestDto(
+    string TitleFa,
+    string ThemeTag,
+    string DescriptionFa,
+    DateOnly WeekStart,
+    DateOnly? WeekEnd,
+    bool IsActive = true);
+
+public record SetChallengeActiveRequestDto(bool IsActive);
 
 public record MemberEngagementDto(
     int ListenStreak,

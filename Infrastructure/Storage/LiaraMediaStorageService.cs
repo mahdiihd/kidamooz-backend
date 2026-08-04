@@ -103,6 +103,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         {
             "cover" => "covers/",
             "audio" => "audio/",
+            "user-audio" => "audio/user/",
             "icon" => "icons/",
             "drawing" => "drawings/",
             _ => null
@@ -200,7 +201,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         var valid = mediaType switch
         {
             "cover" or "icon" or "drawing" => ImageTypes.Contains(contentType),
-            "audio" => AudioTypes.Contains(contentType),
+            "audio" or "user-audio" => AudioTypes.Contains(contentType),
             _ => false
         };
 
@@ -219,6 +220,7 @@ public class LiaraMediaStorageService(IAmazonS3 s3, LiaraSettings settings) : IM
         {
             "cover" => $"covers/{id}{ext}",
             "audio" => $"audio/{id}{ext}",
+            "user-audio" => $"audio/user/{id}{ext}",
             "icon" => $"icons/{id}{ext}",
             "drawing" => $"drawings/{id}{ext}",
             _ => $"misc/{id}{ext}"

@@ -16,9 +16,12 @@ public record StoryDraftDto(
     bool UsedFallbackCover,
     string TitleFa,
     string DescriptionFa,
+    string TitleEn,
+    string DescriptionEn,
     string StoryScript,
     string? ChallengeTag,
     string? AudioUrl,
+    string? UploadedAudioUrl,
     int? DurationSeconds,
     string? PublishedStoryId,
     string? ErrorMessage,
@@ -41,6 +44,8 @@ public record StoryDraftQuotaDto(
 public record UpdateStoryDraftRequestDto(
     string? TitleFa,
     string? DescriptionFa,
+    string? TitleEn,
+    string? DescriptionEn,
     string? StoryScript,
     string? ChallengeTag);
 

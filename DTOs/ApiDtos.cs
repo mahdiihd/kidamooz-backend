@@ -26,7 +26,8 @@ public record StoryDto(
     bool Published,
     DateTimeOffset? PublishedAt,
     StoryAccessDto Access,
-    string? AuthorName = null);
+    string? AuthorName = null,
+    string? UploadedAudioUrl = null);
 
 public record StoryDetailDto(
     string Id,
@@ -45,9 +46,10 @@ public record StoryDetailDto(
     DateTimeOffset? PublishedAt,
     StoryAccessDto Access,
     List<StoryChapterDto>? Chapters,
-    string? AuthorName = null) : StoryDto(
+    string? AuthorName = null,
+    string? UploadedAudioUrl = null) : StoryDto(
         Id, Title, Description, CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax,
-        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access, AuthorName);
+        CategoryId, ProgressIcon, Featured, SortOrder, Published, PublishedAt, Access, AuthorName, UploadedAudioUrl);
 
 public record StoryListResponseDto(List<StoryDto> Items, int Total);
 
@@ -131,6 +133,19 @@ public record AudienceSegmentDto(string Id, string Label, string Description);
 
 public record AudienceUserDto(string Id, string Label, string Email);
 
+public record AppMemberAdminDto(
+    string Id,
+    string DisplayName,
+    string? Mobile,
+    string Email,
+    string PlanTier,
+    DateTimeOffset? PlusExpiresAt,
+    int ListenStreak,
+    int CreateStreak,
+    bool IsActive,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
 public record UploadUrlRequestDto(string FileName, string ContentType, string MediaType);
 
 public record UploadUrlResponseDto(string UploadUrl, string PublicUrl, DateTimeOffset ExpiresAt);
@@ -209,7 +224,8 @@ public record PublicStoryDto(
     int SortOrder,
     bool Published,
     DateTimeOffset? PublishedAt,
-    string? AuthorName = null);
+    string? AuthorName = null,
+    string? UploadedAudioUrl = null);
 
 public record PublicStoryDetailDto(
     string Id,
@@ -231,10 +247,11 @@ public record PublicStoryDetailDto(
     bool Published,
     DateTimeOffset? PublishedAt,
     List<StoryChapterDto>? Chapters,
-    string? AuthorName = null) : PublicStoryDto(
+    string? AuthorName = null,
+    string? UploadedAudioUrl = null) : PublicStoryDto(
         Id, Title, TitleFa, TitleEn, Description, DescriptionFa, DescriptionEn,
         CoverUrl, AudioUrl, DurationSeconds, AgeMin, AgeMax, CategoryId, ProgressIcon,
-        Featured, SortOrder, Published, PublishedAt, AuthorName);
+        Featured, SortOrder, Published, PublishedAt, AuthorName, UploadedAudioUrl);
 
 public record DeviceRegisterRequestDto(string Token, string Platform = "android", string? AppVersion = null, string? UserId = null);
 

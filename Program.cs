@@ -83,6 +83,8 @@ builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+builder.Services.AddScoped<IAdminMemberService, AdminMemberService>();
+builder.Services.AddScoped<IAdminChallengeService, AdminChallengeService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
@@ -101,6 +103,7 @@ builder.Services.AddScoped<IMemberContext, MemberContext>();
 builder.Services.AddScoped<IChildProfileService, ChildProfileService>();
 builder.Services.AddScoped<IMemberFavoriteService, MemberFavoriteService>();
 builder.Services.AddScoped<IMemberEngagementService, MemberEngagementService>();
+builder.Services.AddScoped<IAdminStoryOfTheDayService, AdminStoryOfTheDayService>();
 
 var firebaseSettings = builder.Configuration.GetSection("Firebase").Get<FirebaseSettings>() ?? new FirebaseSettings();
 ApplyFirebaseEnvOverrides(firebaseSettings);
@@ -126,6 +129,8 @@ builder.Services.AddHttpClient("cover-image", client =>
 });
 builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
 builder.Services.AddSingleton<ICoverImageGenerator, PollinationsCoverImageGenerator>();
+builder.Services.Configure<NarrationSettings>(builder.Configuration.GetSection(NarrationSettings.SectionName));
+builder.Services.AddSingleton<IAudioNarrationService, EdgeTtsAudioNarrationService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -247,6 +252,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("Admin");
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

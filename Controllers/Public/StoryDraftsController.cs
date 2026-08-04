@@ -118,8 +118,8 @@ public class StoryDraftsController(
     }
 
     [HttpPost("{id:guid}/audio")]
-    [RequestSizeLimit(40 * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 40 * 1024 * 1024)]
+    [RequestSizeLimit(52_428_800)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 52_428_800)]
     public async Task<ActionResult<StoryDraftDto>> UploadAudio(
         Guid id,
         [FromForm] IFormFile audio,

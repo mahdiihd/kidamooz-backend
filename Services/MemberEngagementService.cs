@@ -63,8 +63,13 @@ public class MemberEngagementService(
                 StoryId = featured.Id,
                 CreatedAt = DateTimeOffset.UtcNow
             });
-            await db.SaveChangesAsync(ct);
         }
+        else
+        {
+            existing.StoryId = featured.Id;
+        }
+
+        await db.SaveChangesAsync(ct);
 
         return ToStoryOfDay(today, featured);
     }

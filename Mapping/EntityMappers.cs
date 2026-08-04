@@ -30,7 +30,8 @@ public static class EntityMappers
         story.Published,
         story.PublishedAt,
         ToAccessDto(story),
-        story.AuthorName);
+        story.AuthorName,
+        story.UploadedAudioUrl);
 
     public static StoryDetailDto ToStoryDetailDto(Story story) => new(
         story.Id,
@@ -49,7 +50,8 @@ public static class EntityMappers
         story.PublishedAt,
         ToAccessDto(story),
         story.Chapters.OrderBy(c => c.SortOrder).Select(ToChapterDto).ToList(),
-        story.AuthorName);
+        story.AuthorName,
+        story.UploadedAudioUrl);
 
     public static StoryChapterDto ToChapterDto(StoryChapter chapter) => new(
         ToDto(chapter.TitleFa, chapter.TitleEn),
@@ -103,7 +105,8 @@ public static class EntityMappers
         story.SortOrder,
         story.Published,
         story.PublishedAt,
-        story.AuthorName);
+        story.AuthorName,
+        story.UploadedAudioUrl);
 
     public static PublicStoryDetailDto ToPublicStoryDetailDto(Story story) => new(
         story.Id,
@@ -125,5 +128,6 @@ public static class EntityMappers
         story.Published,
         story.PublishedAt,
         story.Chapters.OrderBy(c => c.SortOrder).Select(ToChapterDto).ToList(),
-        story.AuthorName);
+        story.AuthorName,
+        story.UploadedAudioUrl);
 }

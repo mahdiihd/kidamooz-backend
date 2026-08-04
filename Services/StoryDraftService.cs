@@ -7,6 +7,7 @@ using Kidamooz.Infrastructure.Auth;
 using Kidamooz.Infrastructure.Security;
 using Kidamooz.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kidamooz.Services;
 
@@ -36,16 +37,29 @@ public class StoryDraftService(
     IMediaUrlNormalizer mediaUrls,
     IGeminiStoryClient gemini,
     ICoverImageGenerator coverGenerator,
+    IAudioNarrationService narration,
+    IOptions<NarrationSettings> narrationOptions,
     IMemberEngagementService engagement,
+    ICatalogService catalogService,
     ILogger<StoryDraftService> logger) : IStoryDraftService
 {
     public const string PersonalCategoryId = "personal";
+    public const string StorytellingCategoryId = "wonder";
     public const int FreeDailyCreateLimit = 1;
     public const int PlusDailyCreateLimit = 5;
 
     private static readonly HashSet<string> UnlimitedMobiles = new(StringComparer.Ordinal)
     {
         "09196079395"
+    };
+
+    private static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".webm",
+        ".ogg"
     };
 
     public async Task<StoryDraftDto> CreateFromDrawingAsync(
@@ -101,7 +115,11 @@ public class StoryDraftService(
 
             ApplyGeneratedContent(draft, content);
 
-            var coverBytes = await coverGenerator.GenerateAsync(content.CoverPrompt, ct);
+            var coverTask = GenerateCoverBytesAsync(content.CoverPrompt, ct);
+            var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
+            await Task.WhenAll(coverTask, audioTask);
+
+            var coverBytes = await coverTask;
             if (coverBytes is { Length: > 0 })
             {
                 await using var coverStream = new MemoryStream(coverBytes);
@@ -120,6 +138,7 @@ public class StoryDraftService(
                 logger.LogWarning("Using drawing as fallback cover for draft {DraftId}", draft.Id);
             }
 
+            draft.AudioUrl = await audioTask;
             draft.Status = StoryDraftStatuses.Ready;
             draft.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
@@ -199,6 +218,10 @@ public class StoryDraftService(
             draft.TitleFa = PlainTextSanitizer.Clean(request.TitleFa, 300);
         if (!string.IsNullOrWhiteSpace(request.DescriptionFa))
             draft.DescriptionFa = PlainTextSanitizer.Clean(request.DescriptionFa, 2000);
+        if (!string.IsNullOrWhiteSpace(request.TitleEn))
+            draft.TitleEn = PlainTextSanitizer.Clean(request.TitleEn, 300);
+        if (!string.IsNullOrWhiteSpace(request.DescriptionEn))
+            draft.DescriptionEn = PlainTextSanitizer.Clean(request.DescriptionEn, 2000);
         if (!string.IsNullOrWhiteSpace(request.StoryScript))
             draft.StoryScript = PlainTextSanitizer.Clean(request.StoryScript, 8000);
         if (request.ChallengeTag is not null)
@@ -294,12 +317,20 @@ public class StoryDraftService(
         if (audio is null || audio.Length <= 0)
             throw new ArgumentException("فایل صدا الزامی است.");
 
+        var maxUploadSize = narrationOptions.Value.MaxUploadSize;
+        if (audio.Length > maxUploadSize)
+            throw new ArgumentException("حجم فایل صدا نباید بیشتر از ۵۰ مگابایت باشد.");
+
+        var extension = Path.GetExtension(audio.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedUploadExtensions.Contains(extension))
+            throw new ArgumentException("فقط فایل‌های صوتی mp3، wav، m4a، webm و ogg مجاز هستند.");
+
         await using var stream = audio.OpenReadStream();
-        draft.AudioUrl = await storage.UploadAsync(
+        draft.UploadedAudioUrl = await storage.UploadAsync(
             stream,
             audio.FileName,
-            audio.ContentType ?? "audio/mp4",
-            "audio",
+            audio.ContentType ?? ResolveUploadContentType(extension),
+            "user-audio",
             ct);
         draft.DurationSeconds = durationSeconds is > 0 ? durationSeconds : draft.DurationSeconds;
         draft.Status = StoryDraftStatuses.AudioUploaded;
@@ -312,13 +343,14 @@ public class StoryDraftService(
     public async Task<StoryDraftDto> SubmitForReviewAsync(string userId, Guid id, CancellationToken ct = default)
     {
         var draft = await GetOwnedAsync(userId, id, ct);
-        if (string.IsNullOrWhiteSpace(draft.AudioUrl))
-            throw new InvalidOperationException("ابتدا صدای خواندن قصه را ارسال کنید.");
+        if (string.IsNullOrWhiteSpace(draft.AudioUrl) && string.IsNullOrWhiteSpace(draft.UploadedAudioUrl))
+            throw new InvalidOperationException("ابتدا صدای قصه را تولید یا بارگذاری کنید.");
         if (string.IsNullOrWhiteSpace(draft.CoverUrl))
             throw new InvalidOperationException("کاور قصه آماده نیست.");
         if (draft.Status is StoryDraftStatuses.PendingReview or StoryDraftStatuses.Published)
             throw new InvalidOperationException("این قصه قبلاً ارسال شده است.");
 
+        draft.DurationSeconds = ResolveDurationSeconds(draft);
         draft.Status = StoryDraftStatuses.PendingReview;
         draft.SubmittedAt = DateTimeOffset.UtcNow;
         draft.RejectReason = null;
@@ -405,12 +437,15 @@ public class StoryDraftService(
     {
         var draft = await db.StoryDrafts.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == id, ct)
             ?? throw new KeyNotFoundException("پیش‌نویس یافت نشد.");
-        if (draft.Status != StoryDraftStatuses.PendingReview)
-            throw new InvalidOperationException("این پیش‌نویس در صف بررسی نیست.");
-        if (string.IsNullOrWhiteSpace(draft.AudioUrl) || string.IsNullOrWhiteSpace(draft.CoverUrl))
+
+        var canApprove = draft.Status is StoryDraftStatuses.PendingReview or StoryDraftStatuses.Deleted;
+        if (!canApprove)
+            throw new InvalidOperationException("این پیش‌نویس قابل تأیید یا بازانتشار نیست.");
+        if ((string.IsNullOrWhiteSpace(draft.AudioUrl) && string.IsNullOrWhiteSpace(draft.UploadedAudioUrl))
+            || string.IsNullOrWhiteSpace(draft.CoverUrl))
             throw new InvalidOperationException("فایل‌های قصه ناقص است.");
 
-        await EnsurePersonalCategoryAsync(ct);
+        var categoryId = await ResolveStorytellingCategoryIdAsync(ct);
 
         var authorName = PlainTextSanitizer.Clean(
             string.IsNullOrWhiteSpace(draft.User?.DisplayName)
@@ -420,30 +455,48 @@ public class StoryDraftService(
 
         var titleFa = PlainTextSanitizer.Clean(draft.TitleFa, 300);
         var descriptionFa = PlainTextSanitizer.Clean(draft.DescriptionFa, 2000);
+        var titleEn = PlainTextSanitizer.Clean(
+            string.IsNullOrWhiteSpace(draft.TitleEn) ? titleFa : draft.TitleEn,
+            300);
+        var descriptionEn = PlainTextSanitizer.Clean(
+            string.IsNullOrWhiteSpace(draft.DescriptionEn) ? descriptionFa : draft.DescriptionEn,
+            2000);
         var coverUrl = mediaUrls.Normalize(draft.CoverUrl);
         var audioUrl = mediaUrls.Normalize(draft.AudioUrl);
-        if (string.IsNullOrWhiteSpace(coverUrl) || string.IsNullOrWhiteSpace(audioUrl))
+        var uploadedAudioUrl = string.IsNullOrWhiteSpace(draft.UploadedAudioUrl)
+            ? null
+            : mediaUrls.Normalize(draft.UploadedAudioUrl);
+        if (string.IsNullOrWhiteSpace(coverUrl))
             throw new InvalidOperationException("آدرس فایل‌های قصه نامعتبر است.");
+        if (string.IsNullOrWhiteSpace(audioUrl) && string.IsNullOrWhiteSpace(uploadedAudioUrl))
+            throw new InvalidOperationException("آدرس فایل‌های قصه نامعتبر است.");
+        if (string.IsNullOrWhiteSpace(audioUrl))
+            audioUrl = uploadedAudioUrl!;
 
+        var durationSeconds = ResolveDurationSeconds(draft);
         var now = DateTimeOffset.UtcNow;
         Story story;
         if (!string.IsNullOrWhiteSpace(draft.PublishedStoryId))
         {
             story = await db.Stories.FirstOrDefaultAsync(x => x.Id == draft.PublishedStoryId, ct)
                 ?? throw new InvalidOperationException("قصه منتشرشده قبلی یافت نشد.");
-            story.TitleFa = titleFa;
-            story.TitleEn = titleFa;
-            story.DescriptionFa = descriptionFa;
-            story.DescriptionEn = descriptionFa;
-            story.CoverUrl = coverUrl;
-            story.AudioUrl = audioUrl;
-            story.DurationSeconds = draft.DurationSeconds ?? 0;
-            story.AuthorName = authorName;
-            story.AuthorUserId = draft.UserId;
-            story.Published = true;
-            story.PublishedAt = now;
-            story.Visibility = "public";
-            story.UpdatedAt = now;
+            ApplyStoryFields(
+                story,
+                categoryId,
+                titleFa,
+                titleEn,
+                descriptionFa,
+                descriptionEn,
+                coverUrl,
+                audioUrl,
+                uploadedAudioUrl,
+                durationSeconds,
+                authorName,
+                draft.UserId,
+                now);
+            story.DeletedAt = null;
+            if (story.PublishedAt is null)
+                story.PublishedAt = now;
         }
         else
         {
@@ -451,38 +504,86 @@ public class StoryDraftService(
             story = new Story
             {
                 Id = storyId,
-                CategoryId = PersonalCategoryId,
-                TitleFa = titleFa,
-                TitleEn = titleFa,
-                DescriptionFa = descriptionFa,
-                DescriptionEn = descriptionFa,
-                CoverUrl = coverUrl,
-                AudioUrl = audioUrl,
                 ProgressIcon = "star",
-                DurationSeconds = draft.DurationSeconds ?? 0,
                 AgeMin = 3,
                 AgeMax = 8,
                 Featured = false,
                 SortOrder = 0,
-                Published = true,
-                PublishedAt = now,
-                Visibility = "public",
-                AuthorName = authorName,
-                AuthorUserId = draft.UserId,
-                CreatedAt = now,
-                UpdatedAt = now
+                CreatedAt = now
             };
+            ApplyStoryFields(
+                story,
+                categoryId,
+                titleFa,
+                titleEn,
+                descriptionFa,
+                descriptionEn,
+                coverUrl,
+                audioUrl,
+                uploadedAudioUrl,
+                durationSeconds,
+                authorName,
+                draft.UserId,
+                now);
+            story.PublishedAt = now;
             db.Stories.Add(story);
             draft.PublishedStoryId = storyId;
         }
 
         draft.TitleFa = titleFa;
         draft.DescriptionFa = descriptionFa;
+        draft.TitleEn = titleEn;
+        draft.DescriptionEn = descriptionEn;
+        draft.DurationSeconds = durationSeconds;
         draft.StoryScript = PlainTextSanitizer.Clean(draft.StoryScript, 8000);
         draft.Status = StoryDraftStatuses.Published;
+        draft.RejectReason = null;
         draft.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        await catalogService.BumpVersionAsync(ct);
         return new ApproveStoryDraftResponseDto(draft.Id, story.Id, ToDto(draft, draft.User));
+    }
+
+    private static void ApplyStoryFields(
+        Story story,
+        string categoryId,
+        string titleFa,
+        string titleEn,
+        string descriptionFa,
+        string descriptionEn,
+        string coverUrl,
+        string audioUrl,
+        string? uploadedAudioUrl,
+        int durationSeconds,
+        string authorName,
+        string? authorUserId,
+        DateTimeOffset now)
+    {
+        story.CategoryId = categoryId;
+        story.TitleFa = titleFa;
+        story.TitleEn = titleEn;
+        story.DescriptionFa = descriptionFa;
+        story.DescriptionEn = descriptionEn;
+        story.CoverUrl = coverUrl;
+        story.AudioUrl = audioUrl;
+        story.UploadedAudioUrl = uploadedAudioUrl;
+        story.DurationSeconds = durationSeconds;
+        story.AuthorName = authorName;
+        story.AuthorUserId = authorUserId;
+        story.Published = true;
+        story.Visibility = "public";
+        story.UpdatedAt = now;
+    }
+
+    private static int ResolveDurationSeconds(StoryDraft draft)
+    {
+        if (draft.DurationSeconds is > 0)
+            return draft.DurationSeconds.Value;
+
+        var words = draft.StoryScript
+            .Split([' ', '\n', '\r', '\t', '،', '.', '!', '؟', '?'], StringSplitOptions.RemoveEmptyEntries)
+            .Length;
+        return Math.Clamp(words * 60 / 140, 45, 600);
     }
 
     public async Task<StoryDraftDto> AdminRejectAsync(Guid id, string? reason, CancellationToken ct = default)
@@ -500,6 +601,66 @@ public class StoryDraftService(
         await db.SaveChangesAsync(ct);
         return ToDto(draft, draft.User);
     }
+
+    private Task<byte[]?> GenerateCoverBytesAsync(string coverPrompt, CancellationToken ct) =>
+        coverGenerator.GenerateAsync(coverPrompt, ct);
+
+    private async Task<string?> GenerateNarrationSafelyAsync(
+        Guid storyId,
+        string storyText,
+        CancellationToken ct)
+    {
+        try
+        {
+            var relativeUrl = await narration.GenerateAsync(storyId, storyText, ct);
+            if (string.IsNullOrWhiteSpace(relativeUrl))
+                return null;
+
+            var localPath = narration.ResolveLocalPath(relativeUrl);
+            if (!File.Exists(localPath))
+            {
+                logger.LogWarning(
+                    "Narration file missing after generation for {StoryId}. Path={Path}",
+                    storyId,
+                    localPath);
+                return null;
+            }
+
+            await using var stream = File.OpenRead(localPath);
+            var publicUrl = await storage.UploadAsync(
+                stream,
+                $"{storyId:N}.mp3",
+                "audio/mpeg",
+                "audio",
+                ct);
+            logger.LogInformation(
+                "Narration uploaded for {StoryId}. LocalPath={LocalPath}, PublicUrl={PublicUrl}",
+                storyId,
+                localPath,
+                publicUrl);
+            return publicUrl;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Narration generation failed for {StoryId}; continuing without audio", storyId);
+            return null;
+        }
+    }
+
+    private static string ResolveUploadContentType(string extension) =>
+        extension.ToLowerInvariant() switch
+        {
+            ".mp3" => "audio/mpeg",
+            ".wav" => "audio/wav",
+            ".m4a" => "audio/mp4",
+            ".webm" => "audio/webm",
+            ".ogg" => "audio/ogg",
+            _ => "application/octet-stream"
+        };
 
     private async Task EnsureDailyCreateAllowedAsync(string userId, CancellationToken ct)
     {
@@ -627,6 +788,28 @@ public class StoryDraftService(
         await db.SaveChangesAsync(ct);
     }
 
+    private async Task<string> ResolveStorytellingCategoryIdAsync(CancellationToken ct)
+    {
+        var category = await db.Categories.FirstOrDefaultAsync(
+            x => x.DeletedAt == null && (
+                x.Id == StorytellingCategoryId
+                || x.Slug == "wonder"
+                || x.TitleFa == "خیال‌خونه"),
+            ct);
+
+        if (category is null)
+            throw new InvalidOperationException("دسته «خیال‌خونه» یافت نشد. ابتدا آن را در پنل بسازید.");
+
+        if (!category.Published)
+        {
+            category.Published = true;
+            category.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return category.Id;
+    }
+
     private async Task<StoryDraft> GetOwnedAsync(string userId, Guid id, CancellationToken ct)
     {
         EnsureUser(userId);
@@ -647,6 +830,8 @@ public class StoryDraftService(
     {
         draft.TitleFa = PlainTextSanitizer.Clean(content.TitleFa, 300);
         draft.DescriptionFa = PlainTextSanitizer.Clean(content.DescriptionFa, 2000);
+        draft.TitleEn = PlainTextSanitizer.Clean(content.TitleEn, 300);
+        draft.DescriptionEn = PlainTextSanitizer.Clean(content.DescriptionEn, 2000);
         draft.StoryScript = PlainTextSanitizer.Clean(content.StoryScript, 8000);
         draft.CoverPrompt = PlainTextSanitizer.Clean(content.CoverPrompt, 1000);
     }
@@ -659,9 +844,12 @@ public class StoryDraftService(
         d.UsedFallbackCover,
         PlainTextSanitizer.Clean(d.TitleFa, 300),
         PlainTextSanitizer.Clean(d.DescriptionFa, 2000),
+        PlainTextSanitizer.Clean(d.TitleEn, 300),
+        PlainTextSanitizer.Clean(d.DescriptionEn, 2000),
         PlainTextSanitizer.Clean(d.StoryScript, 8000),
         PlainTextSanitizer.CleanOptional(d.ChallengeTag, 64),
         SafeUrl(d.AudioUrl),
+        SafeUrl(d.UploadedAudioUrl),
         d.DurationSeconds,
         d.PublishedStoryId,
         PlainTextSanitizer.CleanOptional(d.ErrorMessage, 500),

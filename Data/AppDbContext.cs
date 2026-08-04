@@ -87,6 +87,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.DescriptionEn).HasMaxLength(2000);
             e.Property(x => x.CoverUrl).HasMaxLength(1000);
             e.Property(x => x.AudioUrl).HasMaxLength(1000);
+            e.Property(x => x.UploadedAudioUrl).HasMaxLength(1000);
             e.Property(x => x.ProgressIcon).HasMaxLength(32).HasDefaultValue("star");
             e.Property(x => x.Visibility).HasMaxLength(20).HasDefaultValue("public");
             e.Property(x => x.AuthorName).HasMaxLength(200);
@@ -217,8 +218,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.ChallengeTag).HasMaxLength(64);
             e.Property(x => x.TitleFa).HasMaxLength(300);
             e.Property(x => x.DescriptionFa).HasMaxLength(2000);
+            e.Property(x => x.TitleEn).HasMaxLength(300);
+            e.Property(x => x.DescriptionEn).HasMaxLength(2000);
             e.Property(x => x.StoryScript).HasMaxLength(8000);
             e.Property(x => x.AudioUrl).HasMaxLength(1000);
+            e.Property(x => x.UploadedAudioUrl).HasMaxLength(1000);
             e.Property(x => x.PublishedStoryId).HasMaxLength(64);
             e.Property(x => x.ErrorMessage).HasMaxLength(500);
             e.Property(x => x.RejectReason).HasMaxLength(500);

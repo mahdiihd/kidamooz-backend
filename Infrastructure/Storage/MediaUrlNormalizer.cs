@@ -63,7 +63,10 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
         dto with
         {
             CoverUrl = Normalize(dto.CoverUrl),
-            AudioUrl = Normalize(dto.AudioUrl)
+            AudioUrl = Normalize(dto.AudioUrl),
+            UploadedAudioUrl = string.IsNullOrWhiteSpace(dto.UploadedAudioUrl)
+                ? null
+                : Normalize(dto.UploadedAudioUrl)
         };
 
     public StoryDetailDto Normalize(StoryDetailDto dto) =>
@@ -71,6 +74,9 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
         {
             CoverUrl = Normalize(dto.CoverUrl),
             AudioUrl = Normalize(dto.AudioUrl),
+            UploadedAudioUrl = string.IsNullOrWhiteSpace(dto.UploadedAudioUrl)
+                ? null
+                : Normalize(dto.UploadedAudioUrl),
             Chapters = dto.Chapters?
                 .Select(c => c with { ImageUrl = Normalize(c.ImageUrl) })
                 .ToList()
@@ -80,7 +86,10 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
         dto with
         {
             CoverUrl = Normalize(dto.CoverUrl),
-            AudioUrl = Normalize(dto.AudioUrl)
+            AudioUrl = Normalize(dto.AudioUrl),
+            UploadedAudioUrl = string.IsNullOrWhiteSpace(dto.UploadedAudioUrl)
+                ? null
+                : Normalize(dto.UploadedAudioUrl)
         };
 
     public PublicStoryDetailDto Normalize(PublicStoryDetailDto dto) =>
@@ -88,6 +97,9 @@ public class MediaUrlNormalizer(LiaraSettings settings) : IMediaUrlNormalizer
         {
             CoverUrl = Normalize(dto.CoverUrl),
             AudioUrl = Normalize(dto.AudioUrl),
+            UploadedAudioUrl = string.IsNullOrWhiteSpace(dto.UploadedAudioUrl)
+                ? null
+                : Normalize(dto.UploadedAudioUrl),
             Chapters = dto.Chapters?
                 .Select(c => c with { ImageUrl = Normalize(c.ImageUrl) })
                 .ToList()
