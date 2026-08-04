@@ -624,21 +624,27 @@ public class StoryDraftService(
 
     private async Task<byte[]?> TryGetCoverBytesAsync(string coverPrompt, CancellationToken ct)
     {
-        for (var attempt = 1; attempt <= 3; attempt++)
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(18));
+
+        try
         {
-            var coverBytes = await coverGenerator.GenerateAsync(coverPrompt, ct);
+            var coverBytes = await coverGenerator.GenerateAsync(coverPrompt, timeoutCts.Token);
             if (coverBytes is { Length: > 0 })
                 return coverBytes;
 
             logger.LogWarning(
-                "AI cover generation attempt {Attempt} failed for prompt length {Length}",
-                attempt,
+                "AI cover generation failed for prompt length {Length}; using drawing fallback",
                 coverPrompt.Length);
-            if (attempt < 3)
-                await Task.Delay(800 * attempt, ct);
+            return null;
         }
-
-        return null;
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                "AI cover generation timed out for prompt length {Length}; using drawing fallback",
+                coverPrompt.Length);
+            return null;
+        }
     }
 
     private async Task<byte[]> RequireCoverBytesAsync(string coverPrompt, CancellationToken ct)

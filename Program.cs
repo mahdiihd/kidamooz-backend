@@ -129,7 +129,7 @@ coverImageSettings.ApiKey = Environment.GetEnvironmentVariable("CoverImage__ApiK
 builder.Services.AddSingleton(coverImageSettings);
 builder.Services.AddHttpClient("cover-image", client =>
 {
-    client.Timeout = TimeSpan.FromMinutes(2);
+    client.Timeout = TimeSpan.FromSeconds(18);
 });
 builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
 builder.Services.AddSingleton<PollinationsCoverImageGenerator>();
@@ -138,6 +138,7 @@ builder.Services.AddSingleton<ICoverImageGenerator>(sp =>
     new CascadingCoverImageGenerator(
         sp.GetRequiredService<GeminiCoverImageGenerator>(),
         sp.GetRequiredService<PollinationsCoverImageGenerator>(),
+        sp.GetRequiredService<CoverImageSettings>(),
         sp.GetRequiredService<ILogger<CascadingCoverImageGenerator>>()));
 builder.Services.Configure<NarrationSettings>(builder.Configuration.GetSection(NarrationSettings.SectionName));
 builder.Services.AddSingleton<IAudioNarrationService, EdgeTtsAudioNarrationService>();
