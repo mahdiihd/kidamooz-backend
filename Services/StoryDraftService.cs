@@ -125,14 +125,14 @@ public class StoryDraftService(
             var audioTask = GenerateNarrationSafelyAsync(draft.Id, speechText, ct);
             await Task.WhenAll(coverTask, audioTask);
 
-            var coverBytes = await coverTask;
-            var usedFallbackCover = coverBytes is not { Length: > 0 };
+            var aiCover = await coverTask;
+            var usedFallbackCover = aiCover is not { Length: > 0 };
+            var coverBytes = usedFallbackCover ? bytes : aiCover!;
             if (usedFallbackCover)
             {
                 logger.LogWarning(
                     "AI cover unavailable for draft {DraftId}; using drawing as cover fallback",
                     draft.Id);
-                coverBytes = bytes;
             }
 
             await using (var coverStream = new MemoryStream(coverBytes))
