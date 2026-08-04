@@ -119,10 +119,7 @@ public class StoryDraftService(
             ApplyGeneratedContent(draft, content);
 
             var coverTask = TryGetCoverBytesAsync(content.CoverPrompt, ct);
-            var speechText = string.IsNullOrWhiteSpace(content.StoryScriptSpeech)
-                ? content.StoryScript
-                : content.StoryScriptSpeech;
-            var audioTask = GenerateNarrationSafelyAsync(draft.Id, speechText, ct);
+            var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
             await Task.WhenAll(coverTask, audioTask);
 
             var aiCover = await coverTask;

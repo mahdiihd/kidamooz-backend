@@ -17,7 +17,6 @@ public class GeminiStoryClient(
 
         Rules:
         - titleFa, descriptionFa, storyScript MUST be Persian (Farsi) WITHOUT Arabic diacritics (no tashkeel/harakat)
-        - storyScriptSpeech MUST be the SAME Persian story WITH full Arabic diacritics (اعراب) and clear punctuation (، . ! ؟ …) so a TTS voice can narrate naturally; keep meaning identical to storyScript
         - titleEn, descriptionEn MUST be natural English (Latin script only). Never copy Persian into English fields.
         - Suitable for ages 3–8
         - Gentle, joyful, no violence or fear
@@ -25,7 +24,7 @@ public class GeminiStoryClient(
         - coverPrompt in English for a children's book illustration inspired by this drawing: colorful, joyful, children's book illustration style, no text on the image
 
         Return ONLY raw JSON with no markdown:
-        {"titleFa":"...","descriptionFa":"...","titleEn":"...","descriptionEn":"...","storyScript":"...","storyScriptSpeech":"...","coverPrompt":"..."}
+        {"titleFa":"...","descriptionFa":"...","titleEn":"...","descriptionEn":"...","storyScript":"...","coverPrompt":"..."}
         Plain text only; no HTML, links, or scripts.
         """;
 
@@ -83,11 +82,10 @@ public class GeminiStoryClient(
             {modeHint}
             قوانین:
             - titleFa, descriptionFa, storyScript به فارسی بدون اعراب
-            - storyScriptSpeech همان متن با اعراب کامل و نقطه‌گذاری مناسب خواندن صوتی
             - titleEn, descriptionEn انگلیسی طبیعی با حروف لاتین؛ هرگز فارسی را در فیلد انگلیسی کپی نکن
             - ملایم، شاد، بدون خشونت و ترس
             - coverPrompt انگلیسی برای تصویرگری کتاب کودک
-            فقط JSON خام با کلیدهای titleFa, descriptionFa, titleEn, descriptionEn, storyScript, storyScriptSpeech, coverPrompt
+            فقط JSON خام با کلیدهای titleFa, descriptionFa, titleEn, descriptionEn, storyScript, coverPrompt
 
             عنوان فعلی: {titleFa}
             توضیح فعلی: {descriptionFa}
@@ -271,9 +269,6 @@ public class GeminiStoryClient(
             string.IsNullOrWhiteSpace(parsed.DescriptionFa) ? parsed.TitleFa : parsed.DescriptionFa,
             2000);
         var storyScript = PlainTextSanitizer.Clean(parsed.StoryScript, 8000);
-        var storyScriptSpeech = PlainTextSanitizer.Clean(
-            string.IsNullOrWhiteSpace(parsed.StoryScriptSpeech) ? parsed.StoryScript : parsed.StoryScriptSpeech,
-            12000);
 
         var titleEn = PlainTextSanitizer.Clean(parsed.TitleEn, 300);
         var descriptionEn = PlainTextSanitizer.Clean(parsed.DescriptionEn, 2000);
@@ -288,7 +283,6 @@ public class GeminiStoryClient(
             titleEn,
             descriptionEn,
             storyScript,
-            storyScriptSpeech,
             PlainTextSanitizer.Clean(coverPrompt, 1000));
     }
 
@@ -379,9 +373,6 @@ public class GeminiStoryClient(
 
         [JsonPropertyName("storyScript")]
         public string StoryScript { get; set; } = string.Empty;
-
-        [JsonPropertyName("storyScriptSpeech")]
-        public string? StoryScriptSpeech { get; set; }
 
         [JsonPropertyName("coverPrompt")]
         public string? CoverPrompt { get; set; }
