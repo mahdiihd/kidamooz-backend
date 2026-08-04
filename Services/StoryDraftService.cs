@@ -118,7 +118,7 @@ public class StoryDraftService(
 
             ApplyGeneratedContent(draft, content);
 
-            var coverTask = RequireCoverBytesAsync(content.CoverPrompt, ct);
+            var coverTask = TryGetCoverBytesAsync(content.CoverPrompt, ct);
             var speechText = string.IsNullOrWhiteSpace(content.StoryScriptSpeech)
                 ? content.StoryScript
                 : content.StoryScriptSpeech;
@@ -126,16 +126,27 @@ public class StoryDraftService(
             await Task.WhenAll(coverTask, audioTask);
 
             var coverBytes = await coverTask;
+            var usedFallbackCover = coverBytes is not { Length: > 0 };
+            if (usedFallbackCover)
+            {
+                logger.LogWarning(
+                    "AI cover unavailable for draft {DraftId}; using drawing as cover fallback",
+                    draft.Id);
+                coverBytes = bytes;
+            }
+
             await using (var coverStream = new MemoryStream(coverBytes))
             {
                 draft.CoverUrl = await storage.UploadAsync(
                     coverStream,
                     $"{draft.Id:N}.jpg",
-                    "image/jpeg",
+                    usedFallbackCover
+                        ? (drawing.ContentType ?? "image/jpeg")
+                        : "image/jpeg",
                     "cover",
                     ct);
             }
-            draft.UsedFallbackCover = false;
+            draft.UsedFallbackCover = usedFallbackCover;
 
             draft.AudioUrl = await audioTask;
             draft.Status = StoryDraftStatuses.Ready;
@@ -611,7 +622,7 @@ public class StoryDraftService(
         return ToDto(draft, draft.User);
     }
 
-    private async Task<byte[]> RequireCoverBytesAsync(string coverPrompt, CancellationToken ct)
+    private async Task<byte[]?> TryGetCoverBytesAsync(string coverPrompt, CancellationToken ct)
     {
         for (var attempt = 1; attempt <= 3; attempt++)
         {
@@ -619,8 +630,22 @@ public class StoryDraftService(
             if (coverBytes is { Length: > 0 })
                 return coverBytes;
 
-            logger.LogWarning("AI cover generation attempt {Attempt} failed for prompt length {Length}", attempt, coverPrompt.Length);
+            logger.LogWarning(
+                "AI cover generation attempt {Attempt} failed for prompt length {Length}",
+                attempt,
+                coverPrompt.Length);
+            if (attempt < 3)
+                await Task.Delay(800 * attempt, ct);
         }
+
+        return null;
+    }
+
+    private async Task<byte[]> RequireCoverBytesAsync(string coverPrompt, CancellationToken ct)
+    {
+        var coverBytes = await TryGetCoverBytesAsync(coverPrompt, ct);
+        if (coverBytes is { Length: > 0 })
+            return coverBytes;
 
         throw new InvalidOperationException("تولید کاور با هوش مصنوعی ناموفق بود. دوباره تلاش کنید.");
     }

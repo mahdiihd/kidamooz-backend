@@ -122,6 +122,10 @@ var coverImageSettings = builder.Configuration.GetSection("CoverImage").Get<Cove
 coverImageSettings.BaseUrl = Environment.GetEnvironmentVariable("CoverImage__BaseUrl")
     ?? Environment.GetEnvironmentVariable("COVER_IMAGE_BASE_URL")
     ?? coverImageSettings.BaseUrl;
+coverImageSettings.ApiKey = Environment.GetEnvironmentVariable("CoverImage__ApiKey")
+    ?? Environment.GetEnvironmentVariable("COVER_IMAGE_API_KEY")
+    ?? Environment.GetEnvironmentVariable("POLLINATIONS_API_KEY")
+    ?? coverImageSettings.ApiKey;
 builder.Services.AddSingleton(coverImageSettings);
 builder.Services.AddHttpClient("cover-image", client =>
 {
