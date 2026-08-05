@@ -5,7 +5,6 @@ using Amazon.S3;
 using Microsoft.AspNetCore.HttpOverrides;
 using Kidamooz.Data;
 using Kidamooz.Infrastructure.Ai;
-using Kidamooz.Infrastructure.Cover;
 using Kidamooz.Infrastructure.Auth;
 using Kidamooz.Infrastructure.Push;
 using Kidamooz.Infrastructure.Storage;
@@ -119,26 +118,8 @@ builder.Services.AddHttpClient("gemini", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(2);
 });
-var coverGenerationOptions = builder.Configuration
-    .GetSection(CoverGenerationOptions.SectionName)
-    .Get<CoverGenerationOptions>() ?? new CoverGenerationOptions();
-ApplyCoverGenerationEnvOverrides(coverGenerationOptions);
-builder.Services.Configure<CoverGenerationOptions>(options =>
-{
-    options.BaseUrl = coverGenerationOptions.BaseUrl;
-    options.ApiKey = coverGenerationOptions.ApiKey;
-    options.OutputFolder = coverGenerationOptions.OutputFolder;
-    options.Width = coverGenerationOptions.Width;
-    options.Height = coverGenerationOptions.Height;
-    options.TimeoutSeconds = coverGenerationOptions.TimeoutSeconds;
-});
-builder.Services.AddHttpClient("cover-generation", client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(Math.Max(10, coverGenerationOptions.TimeoutSeconds));
-});
 builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
-builder.Services.AddSingleton<ICoverGenerationService, PollinationsCoverGenerationService>();
-builder.Services.AddSingleton<ICoverPromptGenerator, StoryCoverPromptGenerator>();
+builder.Services.AddSingleton<ICoverImageGenerator, GeminiCoverImageGenerator>();
 builder.Services.Configure<NarrationSettings>(builder.Configuration.GetSection(NarrationSettings.SectionName));
 builder.Services.AddSingleton<IAudioNarrationService, EdgeTtsAudioNarrationService>();
 
@@ -323,22 +304,6 @@ static void ApplyFirebaseEnvOverrides(FirebaseSettings settings)
         ?? settings.PrivateKey;
 }
 
-static void ApplyCoverGenerationEnvOverrides(CoverGenerationOptions options)
-{
-    options.BaseUrl = Environment.GetEnvironmentVariable("CoverGeneration__BaseUrl")
-        ?? Environment.GetEnvironmentVariable("COVER_IMAGE_BASE_URL")
-        ?? options.BaseUrl;
-    options.ApiKey = Environment.GetEnvironmentVariable("CoverGeneration__ApiKey")
-        ?? Environment.GetEnvironmentVariable("COVER_IMAGE_API_KEY")
-        ?? Environment.GetEnvironmentVariable("POLLINATIONS_API_KEY")
-        ?? options.ApiKey;
-    options.TimeoutSeconds = int.TryParse(
-        Environment.GetEnvironmentVariable("CoverGeneration__TimeoutSeconds"),
-        out var timeoutSeconds)
-        ? timeoutSeconds
-        : options.TimeoutSeconds;
-}
-
 static void ApplyGeminiEnvOverrides(GeminiSettings settings)
 {
     settings.ApiKey = Environment.GetEnvironmentVariable("Gemini__ApiKey")
@@ -347,6 +312,9 @@ static void ApplyGeminiEnvOverrides(GeminiSettings settings)
     settings.Model = Environment.GetEnvironmentVariable("Gemini__Model")
         ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
         ?? settings.Model;
+    settings.CoverImageModel = Environment.GetEnvironmentVariable("Gemini__CoverImageModel")
+        ?? Environment.GetEnvironmentVariable("GEMINI_COVER_IMAGE_MODEL")
+        ?? settings.CoverImageModel;
     settings.BaseUrl = Environment.GetEnvironmentVariable("Gemini__BaseUrl")
         ?? Environment.GetEnvironmentVariable("GEMINI_BASE_URL")
         ?? settings.BaseUrl;
