@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Projects\\Kidamooz\\Back\\back.csproj": {}
+    "d:\\Projects\\Kidamooz\\Back\\back.csproj": {}
   },
   "projects": {
-    "D:\\Projects\\Kidamooz\\Back\\back.csproj": {
+    "d:\\Projects\\Kidamooz\\Back\\back.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Projects\\Kidamooz\\Back\\back.csproj",
+        "projectUniqueName": "d:\\Projects\\Kidamooz\\Back\\back.csproj",
         "projectName": "back",
-        "projectPath": "D:\\Projects\\Kidamooz\\Back\\back.csproj",
+        "projectPath": "d:\\Projects\\Kidamooz\\Back\\back.csproj",
         "packagesPath": "C:\\Users\\Mahdi\\.nuget\\packages\\",
-        "outputPath": "D:\\Projects\\Kidamooz\\Back\\obj\\",
+        "outputPath": "d:\\Projects\\Kidamooz\\Back\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

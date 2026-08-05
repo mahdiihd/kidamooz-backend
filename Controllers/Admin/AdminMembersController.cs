@@ -29,4 +29,25 @@ public class AdminMembersController(IAdminMemberService adminMemberService) : Co
             return NotFound(new { message = ex.Message });
         }
     }
+
+    [HttpPost("{id}/credit")]
+    public async Task<ActionResult<MemberWalletDto>> GrantCredit(
+        string id,
+        [FromBody] AdminGrantCreditRequestDto request,
+        [FromServices] IWalletService wallet,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await wallet.AdminGrantAsync(id, request.AmountTomans, request.Note, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }

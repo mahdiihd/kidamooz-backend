@@ -118,10 +118,26 @@ builder.Services.AddHttpClient("gemini", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(2);
 });
+var avalAiSettings = builder.Configuration.GetSection(AvalAiSettings.SectionName).Get<AvalAiSettings>() ?? new AvalAiSettings();
+avalAiSettings.ApiKey = Environment.GetEnvironmentVariable("AvalAi__ApiKey")
+    ?? Environment.GetEnvironmentVariable("AVALAI_API_KEY")
+    ?? avalAiSettings.ApiKey;
+avalAiSettings.BaseUrl = Environment.GetEnvironmentVariable("AvalAi__BaseUrl")
+    ?? Environment.GetEnvironmentVariable("AVALAI_BASE_URL")
+    ?? avalAiSettings.BaseUrl;
+avalAiSettings.ImageModel = Environment.GetEnvironmentVariable("AvalAi__ImageModel")
+    ?? Environment.GetEnvironmentVariable("AVALAI_IMAGE_MODEL")
+    ?? avalAiSettings.ImageModel;
+builder.Services.AddSingleton(avalAiSettings);
+builder.Services.AddHttpClient("avalai", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(90);
+});
 builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
-builder.Services.AddSingleton<ICoverImageGenerator, GeminiCoverImageGenerator>();
+builder.Services.AddSingleton<ICoverImageGenerator, AvalAiCoverImageGenerator>();
 builder.Services.Configure<NarrationSettings>(builder.Configuration.GetSection(NarrationSettings.SectionName));
 builder.Services.AddSingleton<IAudioNarrationService, EdgeTtsAudioNarrationService>();
+builder.Services.AddScoped<IWalletService, WalletService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

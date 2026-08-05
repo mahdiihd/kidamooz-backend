@@ -31,7 +31,8 @@ public record StoryDraftDto(
     DateTimeOffset? SubmittedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    bool CanRemoveFromProfile);
+    bool CanRemoveFromProfile,
+    string? CoverUpsellCode);
 
 public record StoryDraftQuotaDto(
     bool CanCreateToday,

@@ -83,3 +83,23 @@ public record RedeemPlusRequestDto(string Code);
 public record RewriteStoryDraftRequestDto(string? Mode);
 
 public record RegenerateCoverRequestDto(string? PromptHint);
+
+public record CreditPackageDto(string ProductId, long AmountTomans, string TitleFa);
+
+public record MemberWalletDto(
+    long CreditBalance,
+    bool IsPlus,
+    bool FreeAiCoverUsed,
+    long CoverPriceTomans,
+    IReadOnlyList<CreditPackageDto> Packages);
+
+public record ConfirmBazaarPurchaseRequestDto(
+    string ProductId,
+    string PurchaseToken,
+    string? OrderId,
+    string? PackageName,
+    string? PurchaseData,
+    string? DataSignature);
+
+public record AdminGrantCreditRequestDto(long AmountTomans, string? Note);
+
