@@ -13,6 +13,7 @@ public class PollinationsCoverGenerationService(
     IOptions<CoverGenerationOptions> options,
     ILogger<PollinationsCoverGenerationService> logger) : ICoverGenerationService
 {
+    private const int MaxPromptLength = 320;
     private readonly CoverGenerationOptions _options = options.Value;
 
     public async Task<string?> GenerateAsync(Guid storyId, string prompt, CancellationToken ct = default)
@@ -21,39 +22,46 @@ public class PollinationsCoverGenerationService(
             return null;
 
         var stopwatch = Stopwatch.StartNew();
-        var encodedPrompt = WebUtility.UrlEncode(prompt.Trim());
+        var trimmedPrompt = prompt.Trim();
+        if (trimmedPrompt.Length > MaxPromptLength)
+            trimmedPrompt = trimmedPrompt[..MaxPromptLength].TrimEnd() + "…";
+
+        var encodedPrompt = WebUtility.UrlEncode(trimmedPrompt);
+        var seed = Random.Shared.Next(1, 999_999);
         var legacyUrl =
-            $"{_options.BaseUrl.TrimEnd('/')}/prompt/{encodedPrompt}?width={_options.Width}&height={_options.Height}";
+            $"{_options.BaseUrl.TrimEnd('/')}/prompt/{encodedPrompt}?width={_options.Width}&height={_options.Height}&model={_options.Model}&seed={seed}&nologo=true";
         var authenticatedUrl =
-            $"https://gen.pollinations.ai/image/{encodedPrompt}?width={_options.Width}&height={_options.Height}";
+            $"https://gen.pollinations.ai/image/{encodedPrompt}?width={_options.Width}&height={_options.Height}&model={_options.Model}&seed={seed}&nologo=true";
 
         logger.LogInformation(
             "Cover generation started for {StoryId}. PromptLength={PromptLength}",
             storyId,
-            prompt.Length);
+            trimmedPrompt.Length);
 
         byte[]? imageBytes = null;
         string? sourceUrl = null;
 
-        imageBytes = await DownloadAsync(legacyUrl, useApiKey: false, ct);
-        if (imageBytes is { Length: > 0 })
-        {
-            sourceUrl = legacyUrl;
-        }
-        else if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
         {
             imageBytes = await DownloadAsync(authenticatedUrl, useApiKey: true, ct);
-            sourceUrl = authenticatedUrl;
+            if (imageBytes is { Length: > 0 })
+                sourceUrl = authenticatedUrl;
+        }
+
+        if (imageBytes is not { Length: > 0 })
+        {
+            imageBytes = await DownloadAsync(legacyUrl, useApiKey: false, ct);
+            if (imageBytes is { Length: > 0 })
+                sourceUrl = legacyUrl;
         }
 
         if (imageBytes is not { Length: > 0 })
         {
             stopwatch.Stop();
             logger.LogWarning(
-                "Cover generation failed for {StoryId} after {DurationMs}ms. LegacyUrl={LegacyUrl}",
+                "Cover generation failed for {StoryId} after {DurationMs}ms",
                 storyId,
-                stopwatch.ElapsedMilliseconds,
-                legacyUrl);
+                stopwatch.ElapsedMilliseconds);
             return null;
         }
 
@@ -83,7 +91,11 @@ public class PollinationsCoverGenerationService(
         try
         {
             var client = httpClientFactory.CreateClient("cover-generation");
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            var requestUrl = url;
+            if (useApiKey && !string.IsNullOrWhiteSpace(_options.ApiKey))
+                requestUrl = AppendQuery(requestUrl, "key", _options.ApiKey.Trim());
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
             request.Headers.UserAgent.ParseAdd("KidamoozCoverBot/1.0");
             if (useApiKey && !string.IsNullOrWhiteSpace(_options.ApiKey))
             {
@@ -94,10 +106,12 @@ public class PollinationsCoverGenerationService(
             using var response = await client.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)
             {
+                var body = await response.Content.ReadAsStringAsync(ct);
                 logger.LogWarning(
-                    "Pollinations cover request failed: {Status} Host={Host}",
+                    "Pollinations cover request failed: {Status} Host={Host} Body={Body}",
                     (int)response.StatusCode,
-                    request.RequestUri?.Host);
+                    request.RequestUri?.Host,
+                    Truncate(body, 240));
                 return null;
             }
 
@@ -110,6 +124,14 @@ public class PollinationsCoverGenerationService(
             return null;
         }
     }
+
+    private static string AppendQuery(string url, string key, string value) =>
+        url.Contains('?', StringComparison.Ordinal)
+            ? $"{url}&{key}={WebUtility.UrlEncode(value)}"
+            : $"{url}?{key}={WebUtility.UrlEncode(value)}";
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
 
     private async Task SaveLocalCopyAsync(Guid storyId, byte[] imageBytes, CancellationToken ct)
     {
