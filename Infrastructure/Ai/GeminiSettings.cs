@@ -4,7 +4,6 @@ public class GeminiSettings
 {
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = "gemini-flash-latest";
-    public string CoverImageModel { get; set; } = "gemini-2.5-flash-image";
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);

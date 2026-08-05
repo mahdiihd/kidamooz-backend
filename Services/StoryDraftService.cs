@@ -3,6 +3,7 @@ using Kidamooz.Domain.Entities;
 using Kidamooz.DTOs;
 using Kidamooz.Infrastructure;
 using Kidamooz.Infrastructure.Ai;
+using Kidamooz.Infrastructure.Cover;
 using Kidamooz.Infrastructure.Auth;
 using Kidamooz.Infrastructure.Security;
 using Kidamooz.Infrastructure.Storage;
@@ -39,7 +40,8 @@ public class StoryDraftService(
     IMediaStorageService storage,
     IMediaUrlNormalizer mediaUrls,
     IGeminiStoryClient gemini,
-    ICoverImageGenerator coverGenerator,
+    ICoverGenerationService coverGeneration,
+    ICoverPromptGenerator coverPromptGenerator,
     IAudioNarrationService narration,
     IOptions<NarrationSettings> narrationOptions,
     IMemberEngagementService engagement,
@@ -118,30 +120,29 @@ public class StoryDraftService(
 
             ApplyGeneratedContent(draft, content);
 
-            var coverTask = TryGetCoverBytesAsync(content.CoverPrompt, ct);
+            var coverPrompt = coverPromptGenerator.GeneratePrompt(draft);
+            var coverTask = coverGeneration.GenerateAsync(draft.Id, coverPrompt, ct);
             var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
             await Task.WhenAll(coverTask, audioTask);
 
-            var aiCover = await coverTask;
-            var usedFallbackCover = aiCover is not { Length: > 0 };
-            var coverBytes = usedFallbackCover ? bytes : aiCover!;
+            var aiCoverUrl = await coverTask;
+            var usedFallbackCover = string.IsNullOrWhiteSpace(aiCoverUrl);
             if (usedFallbackCover)
             {
                 logger.LogWarning(
                     "AI cover unavailable for draft {DraftId}; using drawing as cover fallback",
                     draft.Id);
-            }
-
-            await using (var coverStream = new MemoryStream(coverBytes))
-            {
+                await using var coverStream = new MemoryStream(bytes);
                 draft.CoverUrl = await storage.UploadAsync(
                     coverStream,
                     $"{draft.Id:N}.jpg",
-                    usedFallbackCover
-                        ? (drawing.ContentType ?? "image/jpeg")
-                        : "image/jpeg",
+                    drawing.ContentType ?? "image/jpeg",
                     "cover",
                     ct);
+            }
+            else
+            {
+                draft.CoverUrl = aiCoverUrl;
             }
             draft.UsedFallbackCover = usedFallbackCover;
 
@@ -284,14 +285,11 @@ public class StoryDraftService(
         }
 
         draft.CoverPrompt = prompt;
-        var coverBytes = await RequireCoverBytesAsync(prompt, ct);
-        await using var coverStream = new MemoryStream(coverBytes);
-        draft.CoverUrl = await storage.UploadAsync(
-            coverStream,
-            $"{draft.Id:N}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.jpg",
-            "image/jpeg",
-            "cover",
-            ct);
+        var coverUrl = await coverGeneration.GenerateAsync(draft.Id, prompt, ct);
+        if (string.IsNullOrWhiteSpace(coverUrl))
+            throw new InvalidOperationException("تولید کاور با هوش مصنوعی ناموفق بود. دوباره تلاش کنید.");
+
+        draft.CoverUrl = coverUrl;
         draft.UsedFallbackCover = false;
 
         draft.UpdatedAt = DateTimeOffset.UtcNow;
@@ -617,40 +615,6 @@ public class StoryDraftService(
         draft.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return ToDto(draft, draft.User);
-    }
-
-    private async Task<byte[]?> TryGetCoverBytesAsync(string coverPrompt, CancellationToken ct)
-    {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(18));
-
-        try
-        {
-            var coverBytes = await coverGenerator.GenerateAsync(coverPrompt, timeoutCts.Token);
-            if (coverBytes is { Length: > 0 })
-                return coverBytes;
-
-            logger.LogWarning(
-                "AI cover generation failed for prompt length {Length}; using drawing fallback",
-                coverPrompt.Length);
-            return null;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            logger.LogWarning(
-                "AI cover generation timed out for prompt length {Length}; using drawing fallback",
-                coverPrompt.Length);
-            return null;
-        }
-    }
-
-    private async Task<byte[]> RequireCoverBytesAsync(string coverPrompt, CancellationToken ct)
-    {
-        var coverBytes = await TryGetCoverBytesAsync(coverPrompt, ct);
-        if (coverBytes is { Length: > 0 })
-            return coverBytes;
-
-        throw new InvalidOperationException("تولید کاور با هوش مصنوعی ناموفق بود. دوباره تلاش کنید.");
     }
 
     private async Task<string?> GenerateNarrationSafelyAsync(
