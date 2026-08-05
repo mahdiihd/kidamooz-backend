@@ -9,8 +9,6 @@ public class AppUser
     public string? PasswordHash { get; set; }
     public string PlanTier { get; set; } = MemberPlans.Free;
     public DateTimeOffset? PlusExpiresAt { get; set; }
-    public long CreditBalance { get; set; }
-    public bool FreeAiCoverUsed { get; set; }
     public int ListenStreak { get; set; }
     public DateOnly? LastListenDate { get; set; }
     public int CreateStreak { get; set; }
@@ -24,5 +22,4 @@ public class AppUser
     public ICollection<StoryDraft> StoryDrafts { get; set; } = [];
     public ICollection<ChildProfile> Children { get; set; } = [];
     public ICollection<MemberFavorite> Favorites { get; set; } = [];
-    public ICollection<CreditLedger> CreditLedgers { get; set; } = [];
 }

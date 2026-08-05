@@ -99,11 +99,6 @@ namespace back.Data.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
-                    b.Property<long>("CreditBalance")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasDefaultValue(0L);
-
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -113,11 +108,6 @@ namespace back.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
-
-                    b.Property<bool>("FreeAiCoverUsed")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -369,50 +359,6 @@ namespace back.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("child_profiles", (string)null);
-                });
-
-            modelBuilder.Entity("Kidamooz.Domain.Entities.CreditLedger", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasDefaultValueSql("NEWSEQUENTIALID()");
-
-                    b.Property<long>("Amount")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetimeoffset")
-                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("Ref")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Ref")
-                        .IsUnique()
-                        .HasFilter("[Ref] IS NOT NULL");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("credit_ledgers", (string)null);
                 });
 
             modelBuilder.Entity("Kidamooz.Domain.Entities.DeviceToken", b =>
@@ -925,17 +871,6 @@ namespace back.Data.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Kidamooz.Domain.Entities.CreditLedger", b =>
-                {
-                    b.HasOne("Kidamooz.Domain.Entities.AppUser", "User")
-                        .WithMany("CreditLedgers")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Kidamooz.Domain.Entities.MemberFavorite", b =>
                 {
                     b.HasOne("Kidamooz.Domain.Entities.Story", "Story")
@@ -1066,8 +1001,6 @@ namespace back.Data.Migrations
             modelBuilder.Entity("Kidamooz.Domain.Entities.AppUser", b =>
                 {
                     b.Navigation("Children");
-
-                    b.Navigation("CreditLedgers");
 
                     b.Navigation("Favorites");
 

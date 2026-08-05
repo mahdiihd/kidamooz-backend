@@ -24,7 +24,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MemberFavorite> MemberFavorites => Set<MemberFavorite>();
     public DbSet<StoryOfTheDay> StoriesOfTheDay => Set<StoryOfTheDay>();
     public DbSet<WeeklyChallenge> WeeklyChallenges => Set<WeeklyChallenge>();
-    public DbSet<CreditLedger> CreditLedgers => Set<CreditLedger>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -135,8 +134,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Mobile).HasMaxLength(20);
             e.Property(x => x.PasswordHash).HasMaxLength(200);
             e.Property(x => x.PlanTier).HasMaxLength(20).HasDefaultValue(MemberPlans.Free);
-            e.Property(x => x.CreditBalance).HasDefaultValue(0L);
-            e.Property(x => x.FreeAiCoverUsed).HasDefaultValue(false);
             e.Property(x => x.LastPlayedStoryId).HasMaxLength(64);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
@@ -286,22 +283,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.DescriptionFa).HasMaxLength(500);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
             e.HasIndex(x => new { x.IsActive, x.WeekStart });
-        });
-
-        modelBuilder.Entity<CreditLedger>(e =>
-        {
-            e.ToTable("credit_ledgers");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasDefaultValueSql("NEWSEQUENTIALID()");
-            e.Property(x => x.UserId).HasMaxLength(64);
-            e.Property(x => x.Kind).HasMaxLength(32);
-            e.Property(x => x.Ref).HasMaxLength(200);
-            e.Property(x => x.Note).HasMaxLength(500);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
-            e.HasIndex(x => x.UserId);
-            e.HasIndex(x => x.Ref).IsUnique().HasFilter("[Ref] IS NOT NULL");
-            e.HasOne(x => x.User).WithMany(x => x.CreditLedgers).HasForeignKey(x => x.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

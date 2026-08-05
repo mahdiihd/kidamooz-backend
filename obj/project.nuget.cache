@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "zZF90p3tW7U=",
+  "dgSpecHash": "rbZGtU1vu68=",
   "success": true,
-  "projectFilePath": "d:\\Projects\\Kidamooz\\Back\\back.csproj",
+  "projectFilePath": "D:\\Projects\\Kidamooz\\Back\\back.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Mahdi\\.nuget\\packages\\awssdk.core\\4.0.100.3\\awssdk.core.4.0.100.3.nupkg.sha512",
     "C:\\Users\\Mahdi\\.nuget\\packages\\awssdk.s3\\4.0.100.3\\awssdk.s3.4.0.100.3.nupkg.sha512",

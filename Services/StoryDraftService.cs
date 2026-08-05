@@ -44,7 +44,6 @@ public class StoryDraftService(
     IOptions<NarrationSettings> narrationOptions,
     IMemberEngagementService engagement,
     ICatalogService catalogService,
-    IWalletService wallet,
     ILogger<StoryDraftService> logger) : IStoryDraftService
 {
     public const string PersonalCategoryId = "personal";
@@ -119,30 +118,18 @@ public class StoryDraftService(
 
             ApplyGeneratedContent(draft, content);
 
-            var entitlementUser = await db.AppUsers.FirstAsync(x => x.Id == userId, ct);
-            var entitlement = wallet.ResolveCreateEntitlement(entitlementUser);
-            byte[]? aiCover = null;
-            if (entitlement.Kind != CoverEntitlementKind.None)
-            {
-                var coverTask = TryGetCoverBytesAsync(content.CoverPrompt, ct);
-                var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
-                await Task.WhenAll(coverTask, audioTask);
-                aiCover = await coverTask;
-                draft.AudioUrl = await audioTask;
-            }
-            else
-            {
-                draft.AudioUrl = await GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
-            }
+            var coverTask = TryGetCoverBytesAsync(content.CoverPrompt, ct);
+            var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
+            await Task.WhenAll(coverTask, audioTask);
 
+            var aiCover = await coverTask;
             var usedFallbackCover = aiCover is not { Length: > 0 };
             var coverBytes = usedFallbackCover ? bytes : aiCover!;
             if (usedFallbackCover)
             {
                 logger.LogWarning(
-                    "AI cover unavailable for draft {DraftId}; using drawing as cover fallback. Entitlement={Kind}",
-                    draft.Id,
-                    entitlement.Kind);
+                    "AI cover unavailable for draft {DraftId}; using drawing as cover fallback",
+                    draft.Id);
             }
 
             await using (var coverStream = new MemoryStream(coverBytes))
@@ -158,19 +145,12 @@ public class StoryDraftService(
             }
             draft.UsedFallbackCover = usedFallbackCover;
 
-            if (!usedFallbackCover)
-            {
-                if (entitlement.Kind == CoverEntitlementKind.Free)
-                    await wallet.MarkFreeCoverUsedAsync(userId, ct);
-                else if (entitlement.Kind == CoverEntitlementKind.Paid)
-                    await wallet.ChargeCoverAsync(userId, draft.Id, ct);
-            }
-
+            draft.AudioUrl = await audioTask;
             draft.Status = StoryDraftStatuses.Ready;
             draft.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
             await engagement.RecordCreateActivityAsync(userId, ct);
-            return ToDto(draft, await db.AppUsers.AsNoTracking().FirstAsync(x => x.Id == userId, ct));
+            return ToDto(draft, user);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -304,16 +284,6 @@ public class StoryDraftService(
         }
 
         draft.CoverPrompt = prompt;
-        var owner = draft.User ?? await db.AppUsers.FirstAsync(x => x.Id == userId, ct);
-        var entitlement = wallet.ResolvePaidEntitlement(owner);
-        if (entitlement.Kind != CoverEntitlementKind.Paid)
-        {
-            throw new InvalidOperationException(
-                entitlement.UpsellCode == "need_plus"
-                    ? "برای ساخت کاور هوش مصنوعی به اشتراک Plus نیاز دارید."
-                    : "برای ساخت کاور هوش مصنوعی اعتبار خود را شارژ کنید.");
-        }
-
         var coverBytes = await RequireCoverBytesAsync(prompt, ct);
         await using var coverStream = new MemoryStream(coverBytes);
         draft.CoverUrl = await storage.UploadAsync(
@@ -323,11 +293,10 @@ public class StoryDraftService(
             "cover",
             ct);
         draft.UsedFallbackCover = false;
-        await wallet.ChargeCoverAsync(userId, draft.Id, ct);
 
         draft.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        return ToDto(draft, await db.AppUsers.AsNoTracking().FirstAsync(x => x.Id == userId, ct));
+        return ToDto(draft, draft.User);
     }
 
     public async Task<StoryDraftDto> UploadAudioAsync(
@@ -653,7 +622,7 @@ public class StoryDraftService(
     private async Task<byte[]?> TryGetCoverBytesAsync(string coverPrompt, CancellationToken ct)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(18));
 
         try
         {
@@ -938,15 +907,7 @@ public class StoryDraftService(
         d.SubmittedAt,
         d.CreatedAt,
         d.UpdatedAt,
-        CanRemoveFromProfile(d.Status),
-        ResolveCoverUpsellCode(d, user));
-
-    private string? ResolveCoverUpsellCode(StoryDraft d, AppUser? user)
-    {
-        if (!d.UsedFallbackCover || user is null || !user.FreeAiCoverUsed)
-            return null;
-        return wallet.ResolvePaidEntitlement(user).UpsellCode;
-    }
+        CanRemoveFromProfile(d.Status));
 
     private static bool CanRemoveFromProfile(string status) =>
         status is not (StoryDraftStatuses.Published or StoryDraftStatuses.PendingReview or StoryDraftStatuses.Generating);
