@@ -1,19 +1,6 @@
-using System.Diagnostics;
-using System.Text;
-using Amazon.Runtime;
-using Amazon.S3;
-using Microsoft.AspNetCore.HttpOverrides;
 using Kidamooz.Data;
-using Kidamooz.Infrastructure.Ai;
-using Kidamooz.Infrastructure.Auth;
-using Kidamooz.Infrastructure.Push;
-using Kidamooz.Infrastructure.Storage;
-using Kidamooz.Repositories;
-using Kidamooz.Repositories.Interfaces;
-using Kidamooz.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Kidamooz.Infrastructure.Startup;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,214 +13,19 @@ if (AdminUserCli.IsCommand(args))
     Environment.Exit(await AdminUserCli.RunAsync(args));
 }
 
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
-
-var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
-    ?? throw new InvalidOperationException("Jwt settings are required");
-
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
-
-builder.Services.AddSingleton<JwtTokenService>();
-var liaraSettings = LiaraConfiguration.Load(builder.Configuration);
-
-if (builder.Environment.IsProduction() &&
-    (string.IsNullOrWhiteSpace(liaraSettings.AccessKey) ||
-     string.IsNullOrWhiteSpace(liaraSettings.SecretKey) ||
-     liaraSettings.AccessKey.Contains("YOUR_", StringComparison.Ordinal) ||
-     liaraSettings.SecretKey.Contains("YOUR_", StringComparison.Ordinal)))
-{
-    throw new InvalidOperationException("Liara storage credentials are not configured for production.");
-}
-
-builder.Services.AddSingleton<IAmazonS3>(_ =>
-{
-    var liara = liaraSettings;
-
-    var config = new AmazonS3Config
-    {
-        ServiceURL = liara.EndpointUrl,
-        ForcePathStyle = true,
-        AuthenticationRegion = "us-east-1",
-        Timeout = TimeSpan.FromSeconds(30),
-        MaxErrorRetry = 2,
-        RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
-        ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED
-    };
-
-    var credentials = new BasicAWSCredentials(liara.AccessKey, liara.SecretKey);
-    return new AmazonS3Client(credentials, config);
-});
-
-builder.Services.AddSingleton(liaraSettings);
-builder.Services.AddSingleton<IMediaUrlNormalizer, MediaUrlNormalizer>();
-
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
-
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
-builder.Services.AddScoped<IStoryRepository, StoryRepository>();
-builder.Services.AddScoped<ICatalogRepository, CatalogRepository>();
-builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
-builder.Services.AddScoped<IAudienceRepository, AudienceRepository>();
-builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
-builder.Services.AddScoped<IAnalyticsRepository, AnalyticsRepository>();
-builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
-
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IAdminUserService, AdminUserService>();
-builder.Services.AddScoped<IAdminMemberService, AdminMemberService>();
-builder.Services.AddScoped<IAdminChallengeService, AdminChallengeService>();
-builder.Services.AddScoped<IAuditService, AuditService>();
-builder.Services.AddScoped<ICatalogService, CatalogService>();
-builder.Services.AddScoped<IDashboardService, DashboardService>();
-builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
-builder.Services.AddScoped<IDeviceService, DeviceService>();
-builder.Services.AddScoped<INotificationService, NotificationService>();
-builder.Services.AddScoped<IMediaStorageService, LiaraMediaStorageService>();
-builder.Services.AddScoped<IMediaService, MediaService>();
-builder.Services.AddScoped<IAudienceService, AudienceService>();
-builder.Services.AddScoped<ICategoryService, CategoryService>();
-builder.Services.AddScoped<IStoryService, StoryService>();
-builder.Services.AddScoped<IPublicService, PublicService>();
-builder.Services.AddScoped<IStoryDraftService, StoryDraftService>();
-builder.Services.AddScoped<IMemberAuthService, MemberAuthService>();
-builder.Services.AddScoped<IMemberContext, MemberContext>();
-builder.Services.AddScoped<IChildProfileService, ChildProfileService>();
-builder.Services.AddScoped<IMemberFavoriteService, MemberFavoriteService>();
-builder.Services.AddScoped<IMemberEngagementService, MemberEngagementService>();
-builder.Services.AddScoped<IAdminStoryOfTheDayService, AdminStoryOfTheDayService>();
-
-var firebaseSettings = builder.Configuration.GetSection("Firebase").Get<FirebaseSettings>() ?? new FirebaseSettings();
-ApplyFirebaseEnvOverrides(firebaseSettings);
-builder.Services.AddSingleton(firebaseSettings);
-builder.Services.AddHttpClient("firebase");
-builder.Services.AddSingleton<IPushNotificationSender, FirebasePushNotificationSender>();
-
-var geminiSettings = builder.Configuration.GetSection("Gemini").Get<GeminiSettings>() ?? new GeminiSettings();
-ApplyGeminiEnvOverrides(geminiSettings);
-builder.Services.AddSingleton(geminiSettings);
-builder.Services.AddHttpClient("gemini", client =>
-{
-    client.Timeout = TimeSpan.FromMinutes(2);
-});
-builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
-builder.Services.AddSingleton<ICoverImageGenerator, GeminiCoverImageGenerator>();
-builder.Services.Configure<NarrationSettings>(builder.Configuration.GetSection(NarrationSettings.SectionName));
-builder.Services.AddSingleton<IAudioNarrationService, EdgeTtsAudioNarrationService>();
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSettings.Issuer,
-            ValidAudience = jwtSettings.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
-        };
-    });
-
-builder.Services.AddAuthorization();
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Admin", policy =>
-        policy.SetIsOriginAllowed(_ => true)
-            .AllowAnyHeader()
-            .AllowAnyMethod());
-});
-
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-    });
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-    {
-        Title = "Kidamooz API",
-        Version = "v1"
-    });
-
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header
-    });
-
-    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
-        {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-            {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
+builder.AddKidamoozServices();
 
 var app = builder.Build();
 
-app.UseExceptionHandler(errorApp =>
-{
-    errorApp.Run(async context =>
-    {
-        var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
-        var ex = feature?.Error;
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(new
-        {
-            message = ex?.Message ?? "خطای داخلی سرور",
-            detail = ex?.GetType().Name
-        });
-    });
-});
-
-app.Lifetime.ApplicationStarted.Register(() => _ = InitializeDatabaseAsync(app));
+app.UseKidamoozExceptionHandler();
+app.InitializeKidamoozDatabaseOnStarted();
 
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
-app.Use(async (context, next) =>
-{
-    context.Response.OnStarting(() =>
-    {
-        var headers = context.Response.Headers;
-        headers["X-Content-Type-Options"] = "nosniff";
-        headers["X-Frame-Options"] = "DENY";
-        headers["Referrer-Policy"] = "no-referrer";
-
-        var path = context.Request.Path.Value ?? string.Empty;
-        if (!path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
-        {
-            headers["Content-Security-Policy"] =
-                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
-        }
-
-        return Task.CompletedTask;
-    });
-
-    await next();
-});
+app.UseKidamoozSecurityHeaders();
 
 if (app.Environment.IsDevelopment())
 {
@@ -250,72 +42,7 @@ app.MapControllers();
 
 if (app.Environment.IsDevelopment())
 {
-    app.Lifetime.ApplicationStarted.Register(OpenSwaggerInBrowser);
+    app.OpenKidamoozSwaggerOnStarted();
 }
 
 app.Run();
-
-static async Task InitializeDatabaseAsync(WebApplication application)
-{
-    try
-    {
-        await using var scope = application.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await DbInitializer.InitializeAsync(db);
-        application.Logger.LogInformation("Database initialized successfully");
-    }
-    catch (Exception ex)
-    {
-        application.Logger.LogError(ex, "Database initialization failed");
-    }
-}
-
-void OpenSwaggerInBrowser()
-{
-    var swaggerUrl = app.Urls
-        .Select(url => $"{url.TrimEnd('/')}/swagger")
-        .FirstOrDefault(url => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-        ?? $"{app.Urls.FirstOrDefault()?.TrimEnd('/') ?? "http://localhost:5042"}/swagger";
-
-    try
-    {
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = swaggerUrl,
-            UseShellExecute = true
-        });
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Could not open Swagger at {SwaggerUrl}", swaggerUrl);
-    }
-}
-
-static void ApplyFirebaseEnvOverrides(FirebaseSettings settings)
-{
-    settings.ProjectId = Environment.GetEnvironmentVariable("Firebase__ProjectId")
-        ?? Environment.GetEnvironmentVariable("FIREBASE_PROJECT_ID")
-        ?? settings.ProjectId;
-    settings.ClientEmail = Environment.GetEnvironmentVariable("Firebase__ClientEmail")
-        ?? Environment.GetEnvironmentVariable("FIREBASE_CLIENT_EMAIL")
-        ?? settings.ClientEmail;
-    settings.PrivateKey = Environment.GetEnvironmentVariable("Firebase__PrivateKey")
-        ?? Environment.GetEnvironmentVariable("FIREBASE_PRIVATE_KEY")
-        ?? settings.PrivateKey;
-}
-
-static void ApplyGeminiEnvOverrides(GeminiSettings settings)
-{
-    settings.ApiKey = Environment.GetEnvironmentVariable("Gemini__ApiKey")
-        ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-        ?? settings.ApiKey;
-    settings.Model = Environment.GetEnvironmentVariable("Gemini__Model")
-        ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-        ?? settings.Model;
-    settings.CoverImageModel = Environment.GetEnvironmentVariable("Gemini__CoverImageModel")
-        ?? Environment.GetEnvironmentVariable("GEMINI_COVER_IMAGE_MODEL")
-        ?? settings.CoverImageModel;
-    settings.BaseUrl = Environment.GetEnvironmentVariable("Gemini__BaseUrl")
-        ?? Environment.GetEnvironmentVariable("GEMINI_BASE_URL")
-        ?? settings.BaseUrl;
-}

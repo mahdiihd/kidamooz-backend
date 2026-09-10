@@ -5,3 +5,21 @@ appsettings.Production.json
 .env
 *.user
 .vs/
+
+# Local secrets: examples must contain placeholders only
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pfx
+*.p12
+*.key
+*.pem
+*.jks
+*.keystore
+*firebase-adminsdk*.json
+service-account*.json
+serviceAccount*.json
+appsettings.Local.json
+appsettings.*.Local.json
