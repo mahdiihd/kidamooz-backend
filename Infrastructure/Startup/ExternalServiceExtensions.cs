@@ -7,6 +7,10 @@ public static class ExternalServiceExtensions
 {
     public static void AddKidamoozExternalServices(this WebApplicationBuilder builder)
     {
+        builder.Logging.AddFilter<Microsoft.Extensions.Logging.Console.ConsoleLoggerProvider>(
+            "Kidamooz.Infrastructure.Ai.GeminiStoryClient", LogLevel.Information);
+        builder.Logging.AddFilter<Microsoft.Extensions.Logging.Console.ConsoleLoggerProvider>(
+            "Kidamooz.Infrastructure.Ai.GeminiCoverImageGenerator", LogLevel.Information);
         var firebaseSettings = builder.Configuration.GetSection("Firebase").Get<FirebaseSettings>() ?? new FirebaseSettings();
         ApplyFirebaseEnvOverrides(firebaseSettings);
         builder.Services.AddSingleton(firebaseSettings);
@@ -19,6 +23,7 @@ public static class ExternalServiceExtensions
         builder.Services.AddHttpClient("gemini", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(2);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Kidamooz/1.0");
         });
         builder.Services.AddSingleton<IGeminiStoryClient, GeminiStoryClient>();
         builder.Services.AddSingleton<ICoverImageGenerator, GeminiCoverImageGenerator>();

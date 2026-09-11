@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Story> Stories => Set<Story>();
     public DbSet<StoryChapter> StoryChapters => Set<StoryChapter>();
     public DbSet<AudienceSegment> AudienceSegments => Set<AudienceSegment>();
+    public DbSet<MemberOtp> MemberOtps => Set<MemberOtp>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<StoryAudienceSegment> StoryAudienceSegments => Set<StoryAudienceSegment>();
     public DbSet<StoryAudienceUser> StoryAudienceUsers => Set<StoryAudienceUser>();
@@ -27,6 +28,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<MemberOtp>(e =>
+        {
+            e.ToTable("member_otps");
+            e.HasKey(x => x.Mobile);
+            e.Property(x => x.Mobile).HasMaxLength(11);
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+        });
         modelBuilder.Entity<AdminUser>(e =>
         {
             e.ToTable("users");
@@ -215,6 +223,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.DrawingUrl).HasMaxLength(1000);
             e.Property(x => x.CoverUrl).HasMaxLength(1000);
+            e.Property(x => x.CoverChoice).HasMaxLength(16).HasDefaultValue("drawing");
             e.Property(x => x.CoverPrompt).HasMaxLength(1000);
             e.Property(x => x.ChallengeTag).HasMaxLength(64);
             e.Property(x => x.TitleFa).HasMaxLength(300);

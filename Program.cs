@@ -36,6 +36,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("Admin");
 app.UseStaticFiles();
+app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

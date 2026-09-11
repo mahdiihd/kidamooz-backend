@@ -14,52 +14,29 @@ public interface IMemberAuthService
     Task<MemberProfileDto> UpdateProfileAsync(string userId, UpdateMemberProfileRequestDto request, CancellationToken ct = default);
 }
 
-public class MemberAuthService(AppDbContext db, JwtTokenService jwt) : IMemberAuthService
+public class MemberAuthService(AppDbContext db, JwtTokenService jwt, MemberOtpService otp) : IMemberAuthService
 {
     public async Task<MemberAuthResponseDto> LoginOrRegisterAsync(
         MemberAuthRequestDto request,
         CancellationToken ct = default)
     {
-        var mobile = MobileNormalizer.Normalize(request.Mobile);
-        if (!MobileNormalizer.IsValidIranMobile(mobile))
-            throw new ArgumentException("شماره موبایل معتبر نیست.");
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Trim().Length < 4)
-            throw new ArgumentException("رمز عبور حداقل ۴ کاراکتر باشد.");
-
-        var password = request.Password.Trim();
+        var mobile = MemberOtpService.Normalize(request.Mobile);
+        await otp.VerifyAsync(mobile, request.Code, ct);
         var existing = await db.AppUsers.FirstOrDefaultAsync(x => x.Mobile == mobile, ct);
         if (existing is not null)
         {
-            if (string.IsNullOrWhiteSpace(existing.PasswordHash)
-                || !BCrypt.Net.BCrypt.Verify(password, existing.PasswordHash))
-                throw new UnauthorizedAccessException("شماره موبایل یا رمز عبور اشتباه است.");
             if (!existing.IsActive)
                 throw new UnauthorizedAccessException("حساب کاربری غیرفعال است.");
-
-            if (!string.IsNullOrWhiteSpace(request.DisplayName)
-                && string.IsNullOrWhiteSpace(existing.DisplayName))
-            {
-                existing.DisplayName = PlainTextSanitizer.Clean(request.DisplayName, 200);
-                existing.UpdatedAt = DateTimeOffset.UtcNow;
-                await db.SaveChangesAsync(ct);
-            }
 
             return Issue(existing);
         }
 
         var now = DateTimeOffset.UtcNow;
-        var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
-            ? $"کاربر {mobile[^4..]}"
-            : PlainTextSanitizer.Clean(request.DisplayName, 200);
-        if (string.IsNullOrWhiteSpace(displayName))
-            displayName = $"کاربر {mobile[^4..]}";
-
         var user = new AppUser
         {
             Id = Guid.NewGuid().ToString("N")[..12],
             Mobile = mobile,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-            DisplayName = displayName,
+            DisplayName = string.Empty,
             Email = $"{mobile}@member.local",
             IsActive = true,
             CreatedAt = now,
@@ -82,12 +59,9 @@ public class MemberAuthService(AppDbContext db, JwtTokenService jwt) : IMemberAu
         CancellationToken ct = default)
     {
         var user = await GetMemberAsync(userId, ct);
-        if (!string.IsNullOrWhiteSpace(request.DisplayName))
-        {
-            var cleaned = PlainTextSanitizer.Clean(request.DisplayName, 200);
-            if (!string.IsNullOrWhiteSpace(cleaned))
-                user.DisplayName = cleaned;
-        }
+        var name = PlainTextSanitizer.Clean(request.DisplayName, 200);
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("نام را وارد کنید.");
+        user.DisplayName = name;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return ToProfile(user);
@@ -97,7 +71,7 @@ public class MemberAuthService(AppDbContext db, JwtTokenService jwt) : IMemberAu
     {
         var user = await db.AppUsers.FirstOrDefaultAsync(x => x.Id == userId, ct)
             ?? throw new KeyNotFoundException("کاربر یافت نشد.");
-        if (string.IsNullOrWhiteSpace(user.Mobile) || string.IsNullOrWhiteSpace(user.PasswordHash))
+        if (string.IsNullOrWhiteSpace(user.Mobile) || !user.IsActive)
             throw new UnauthorizedAccessException("این حساب برای ورود اپ تنظیم نشده است.");
         return user;
     }
@@ -106,5 +80,5 @@ public class MemberAuthService(AppDbContext db, JwtTokenService jwt) : IMemberAu
         new(jwt.GenerateMemberAccessToken(user), ToProfile(user));
 
     private static MemberProfileDto ToProfile(AppUser user) =>
-        new(user.Id, user.Mobile ?? string.Empty, PlainTextSanitizer.Clean(user.DisplayName, 200));
+        new(user.Id, user.Mobile ?? string.Empty, PlainTextSanitizer.Clean(user.DisplayName, 200), !string.IsNullOrWhiteSpace(user.DisplayName));
 }

@@ -18,10 +18,10 @@ public class GeminiCoverImageGenerator(
             ? "gemini-2.5-flash-image"
             : settings.CoverImageModel.Trim();
         var baseUrl = string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? "https://generativelanguage.googleapis.com"
+            ? "https://1xai.ir/gemini"
             : settings.BaseUrl.TrimEnd('/');
         var url =
-            $"{baseUrl}/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(settings.ApiKey)}";
+            $"{baseUrl}/v1beta/models/{model}:generateContent";
 
         var prompt = $"""
             Create one children's book cover illustration.
@@ -52,6 +52,7 @@ public class GeminiCoverImageGenerator(
         {
             var client = httpClientFactory.CreateClient("gemini");
             using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Add("x-goog-api-key", settings.ApiKey);
             request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -60,13 +61,13 @@ public class GeminiCoverImageGenerator(
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning(
-                    "Gemini cover generation failed: {Status} {Body}",
-                    (int)response.StatusCode,
-                    Truncate(body));
+                    "Gemini cover generation failed: {Status}",
+                    (int)response.StatusCode);
                 return null;
             }
 
             using var doc = JsonDocument.Parse(body);
+            GeminiUsage.Log(logger, doc.RootElement, "cover", model);
             var image = ExtractImageBytes(doc.RootElement);
             if (image is not { Length: > 0 })
             {

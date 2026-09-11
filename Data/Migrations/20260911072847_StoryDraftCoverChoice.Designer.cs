@@ -4,6 +4,7 @@ using Kidamooz.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace back.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911072847_StoryDraftCoverChoice")]
+    partial class StoryDraftCoverChoice
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -431,37 +434,6 @@ namespace back.Data.Migrations
                     b.HasIndex("StoryId");
 
                     b.ToTable("member_favorites", (string)null);
-                });
-
-            modelBuilder.Entity("Kidamooz.Domain.Entities.MemberOtp", b =>
-                {
-                    b.Property<string>("Mobile")
-                        .HasMaxLength(11)
-                        .HasColumnType("nvarchar(11)");
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CodeHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("LastSentAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("SendCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("WindowStartedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Mobile");
-
-                    b.ToTable("member_otps", (string)null);
                 });
 
             modelBuilder.Entity("Kidamooz.Domain.Entities.RefreshToken", b =>

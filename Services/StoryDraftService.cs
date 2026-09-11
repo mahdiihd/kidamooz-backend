@@ -13,7 +13,7 @@ namespace Kidamooz.Services;
 
 public interface IStoryDraftService
 {
-    Task<StoryDraftDto> CreateFromDrawingAsync(string userId, string deviceId, IFormFile drawing, CancellationToken ct = default);
+    Task<StoryDraftDto> CreateFromDrawingAsync(string userId, string deviceId, IFormFile drawing, CancellationToken ct = default, bool generateCover = false, string? coverChoice = null);
     Task<StoryDraftQuotaDto> GetQuotaAsync(string userId, CancellationToken ct = default);
     Task<List<StoryDraftDto>> ListAsync(string userId, CancellationToken ct = default);
     Task<StoryDraftDto> GetAsync(string userId, Guid id, CancellationToken ct = default);
@@ -69,9 +69,14 @@ public class StoryDraftService(
         string userId,
         string deviceId,
         IFormFile drawing,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool generateCover = false, string? coverChoice = null)
     {
         EnsureUser(userId);
+        // Free covers are uploaded during moderation, never generated on this request.
+        if (coverChoice is not null && coverChoice is not ("drawing" or "ai_free"))
+            throw new ArgumentException("گزینهٔ جلد معتبر نیست یا هنوز فعال نشده است.");
+        if (coverChoice is not null) generateCover = false;
         if (drawing is null || drawing.Length <= 0)
             throw new ArgumentException("تصویر نقاشی الزامی است.");
 
@@ -84,6 +89,7 @@ public class StoryDraftService(
             UserId = userId,
             DeviceId = string.IsNullOrWhiteSpace(deviceId) ? "unknown" : deviceId.Trim(),
             Status = StoryDraftStatuses.Generating,
+            CoverChoice = coverChoice ?? (generateCover ? "ai_paid" : "drawing"),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         };
@@ -118,13 +124,15 @@ public class StoryDraftService(
 
             ApplyGeneratedContent(draft, content);
 
-            var coverTask = TryGetCoverBytesAsync(content.CoverPrompt, ct);
+            var coverTask = generateCover
+                ? TryGetCoverBytesAsync(content.CoverPrompt, ct)
+                : Task.FromResult<byte[]?>(null);
             var audioTask = GenerateNarrationSafelyAsync(draft.Id, content.StoryScript, ct);
             await Task.WhenAll(coverTask, audioTask);
 
             var aiCover = await coverTask;
-            var usedFallbackCover = aiCover is not { Length: > 0 };
-            var coverBytes = usedFallbackCover ? bytes : aiCover!;
+            var hasAiCover = aiCover is { Length: > 0 };
+            var usedFallbackCover = generateCover && !hasAiCover;
             if (usedFallbackCover)
             {
                 logger.LogWarning(
@@ -132,16 +140,19 @@ public class StoryDraftService(
                     draft.Id);
             }
 
-            await using (var coverStream = new MemoryStream(coverBytes))
+            if (hasAiCover)
             {
+                await using var coverStream = new MemoryStream(aiCover!);
                 draft.CoverUrl = await storage.UploadAsync(
                     coverStream,
                     $"{draft.Id:N}.jpg",
-                    usedFallbackCover
-                        ? (drawing.ContentType ?? "image/jpeg")
-                        : "image/jpeg",
+                    "image/jpeg",
                     "cover",
                     ct);
+            }
+            else
+            {
+                draft.CoverUrl = draft.DrawingUrl;
             }
             draft.UsedFallbackCover = usedFallbackCover;
 
@@ -442,6 +453,18 @@ public class StoryDraftService(
         if ((string.IsNullOrWhiteSpace(draft.AudioUrl) && string.IsNullOrWhiteSpace(draft.UploadedAudioUrl))
             || string.IsNullOrWhiteSpace(draft.CoverUrl))
             throw new InvalidOperationException("فایل‌های قصه ناقص است.");
+
+        if (request?.CoverUrl is not null)
+        {
+            var uploadedCover = mediaUrls.Normalize(request.CoverUrl);
+            if (string.IsNullOrWhiteSpace(uploadedCover) || uploadedCover.Length > 1000)
+                throw new InvalidOperationException("آدرس جلد بارگذاری‌شده معتبر نیست.");
+            draft.CoverUrl = uploadedCover;
+            draft.UsedFallbackCover = false;
+        }
+        if (draft.CoverChoice == "ai_free"
+            && mediaUrls.Normalize(draft.CoverUrl) == mediaUrls.Normalize(draft.DrawingUrl))
+            throw new InvalidOperationException("کاربر جلد رایگان درخواست کرده است؛ پیش از تأیید، جلد جدید را بارگذاری کنید.");
 
         var categoryId = await ResolveStorytellingCategoryIdAsync(ct);
 
@@ -907,7 +930,8 @@ public class StoryDraftService(
         d.SubmittedAt,
         d.CreatedAt,
         d.UpdatedAt,
-        CanRemoveFromProfile(d.Status));
+        CanRemoveFromProfile(d.Status),
+        d.CoverChoice);
 
     private static bool CanRemoveFromProfile(string status) =>
         status is not (StoryDraftStatuses.Published or StoryDraftStatuses.PendingReview or StoryDraftStatuses.Generating);

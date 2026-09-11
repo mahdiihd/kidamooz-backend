@@ -1,8 +1,13 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Kidamooz.DTOs;
 
-public record MemberAuthRequestDto(string Mobile, string Password, string? DisplayName);
+public record MemberAuthRequestDto(
+    [Required, StringLength(20)] string Mobile,
+    [Required, RegularExpression("^[0-9]{6}$")] string Code);
+public record RequestMemberOtpDto([Required, StringLength(20)] string Mobile);
 
-public record MemberProfileDto(string Id, string Mobile, string DisplayName);
+public record MemberProfileDto(string Id, string Mobile, string DisplayName, bool ProfileComplete = true);
 
 public record MemberAuthResponseDto(string AccessToken, MemberProfileDto User);
 
@@ -31,7 +36,8 @@ public record StoryDraftDto(
     DateTimeOffset? SubmittedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    bool CanRemoveFromProfile);
+    bool CanRemoveFromProfile,
+    string CoverChoice = "drawing");
 
 public record StoryDraftQuotaDto(
     bool CanCreateToday,
@@ -51,7 +57,7 @@ public record UpdateStoryDraftRequestDto(
 
 public record RejectStoryDraftRequestDto(string? Reason);
 
-public record ApproveStoryDraftRequestDto(string? PreferredNarration);
+public record ApproveStoryDraftRequestDto(string? PreferredNarration, string? CoverUrl = null);
 
 public record ApproveStoryDraftResponseDto(
     Guid DraftId,

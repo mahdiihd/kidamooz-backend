@@ -13,18 +13,17 @@ public class GeminiStoryClient(
 {
     private const string Prompt = """
         You are a children's story writer. The image is a child's drawing.
-        Create a short bilingual story based on that drawing.
+        Create a short Persian story based on that drawing.
 
         Rules:
         - titleFa, descriptionFa, storyScript MUST be Persian (Farsi) WITHOUT Arabic diacritics (no tashkeel/harakat)
-        - titleEn, descriptionEn MUST be natural English (Latin script only). Never copy Persian into English fields.
         - Suitable for ages 3–8
         - Gentle, joyful, no violence or fear
         - storyScript is for reading aloud by a parent/child, about 1–2 minutes (roughly 180–350 Persian words)
         - coverPrompt in English for a children's book illustration inspired by this drawing: colorful, joyful, children's book illustration style, no text on the image
 
         Return ONLY raw JSON with no markdown:
-        {"titleFa":"...","descriptionFa":"...","titleEn":"...","descriptionEn":"...","storyScript":"...","coverPrompt":"..."}
+        {"titleFa":"...","descriptionFa":"...","storyScript":"...","coverPrompt":"..."}
         Plain text only; no HTML, links, or scripts.
         """;
 
@@ -57,6 +56,7 @@ public class GeminiStoryClient(
                 }
             ],
             temperature: 0.8,
+            operation: "story",
             failureMessage: "تولید قصه با هوش مصنوعی ناموفق بود. کمی بعد دوباره تلاش کنید.",
             ct);
 
@@ -82,10 +82,9 @@ public class GeminiStoryClient(
             {modeHint}
             قوانین:
             - titleFa, descriptionFa, storyScript به فارسی بدون اعراب
-            - titleEn, descriptionEn انگلیسی طبیعی با حروف لاتین؛ هرگز فارسی را در فیلد انگلیسی کپی نکن
             - ملایم، شاد، بدون خشونت و ترس
             - coverPrompt انگلیسی برای تصویرگری کتاب کودک
-            فقط JSON خام با کلیدهای titleFa, descriptionFa, titleEn, descriptionEn, storyScript, coverPrompt
+            فقط JSON خام با کلیدهای titleFa, descriptionFa, storyScript, coverPrompt
 
             عنوان فعلی: {titleFa}
             توضیح فعلی: {descriptionFa}
@@ -96,6 +95,7 @@ public class GeminiStoryClient(
         var parsed = await RequestStoryJsonAsync(
             [new { text = prompt }],
             temperature: 0.7,
+            operation: "rewrite",
             failureMessage: "بازنویسی قصه ناموفق بود. کمی بعد دوباره تلاش کنید.",
             ct);
 
@@ -105,15 +105,16 @@ public class GeminiStoryClient(
     private async Task<GeminiStoryJson> RequestStoryJsonAsync(
         object[] parts,
         double temperature,
+        string operation,
         string failureMessage,
         CancellationToken ct)
     {
         var model = string.IsNullOrWhiteSpace(settings.Model) ? "gemini-flash-latest" : settings.Model;
         var baseUrl = string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? "https://generativelanguage.googleapis.com"
+            ? "https://1xai.ir/gemini"
             : settings.BaseUrl.TrimEnd('/');
         var url =
-            $"{baseUrl}/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(settings.ApiKey)}";
+            $"{baseUrl}/v1beta/models/{model}:generateContent";
 
         var payload = new
         {
@@ -130,6 +131,7 @@ public class GeminiStoryClient(
 
         var client = httpClientFactory.CreateClient("gemini");
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Add("x-goog-api-key", settings.ApiKey);
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -148,11 +150,12 @@ public class GeminiStoryClient(
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning("Gemini story generation failed: {Status} {Body}", (int)response.StatusCode, Truncate(body));
+            logger.LogWarning("Gemini story generation failed: {Status}", (int)response.StatusCode);
             throw new InvalidOperationException(failureMessage);
         }
 
         using var doc = JsonDocument.Parse(body);
+        GeminiUsage.Log(logger, doc.RootElement, operation, model);
         var text = ExtractText(doc.RootElement);
         if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException("پاسخ هوش مصنوعی خالی بود.");
@@ -169,95 +172,16 @@ public class GeminiStoryClient(
         return parsed;
     }
 
-    public async Task<(string TitleEn, string DescriptionEn)> EnsureEnglishAsync(
-        string titleFa,
-        string descriptionFa,
-        string? titleEn,
-        string? descriptionEn,
+    // Preserve existing metadata; publishing never triggers a translation request.
+    public Task<(string TitleEn, string DescriptionEn)> EnsureEnglishAsync(
+        string titleFa, string descriptionFa, string? titleEn, string? descriptionEn,
         CancellationToken ct = default)
     {
-        var cleanTitleEn = PlainTextSanitizer.Clean(titleEn, 300);
-        var cleanDescriptionEn = PlainTextSanitizer.Clean(descriptionEn, 2000);
-        if (IsUsableEnglish(cleanTitleEn, titleFa) && IsUsableEnglish(cleanDescriptionEn, descriptionFa))
-            return (cleanTitleEn, cleanDescriptionEn);
-
-        if (!settings.IsConfigured)
-        {
-            return (
-                IsUsableEnglish(cleanTitleEn, titleFa) ? cleanTitleEn : "Children's story",
-                IsUsableEnglish(cleanDescriptionEn, descriptionFa) ? cleanDescriptionEn : "A gentle story for kids.");
-        }
-
-        var prompt =
-            "Translate this Persian children's story metadata into natural English.\n" +
-            "Return ONLY raw JSON with keys titleEn and descriptionEn.\n" +
-            "Use Latin script only. Do not copy Persian text.\n" +
-            $"titleFa: {titleFa}\n" +
-            $"descriptionFa: {descriptionFa}";
-
-        try
-        {
-            var model = string.IsNullOrWhiteSpace(settings.Model) ? "gemini-flash-latest" : settings.Model;
-            var baseUrl = string.IsNullOrWhiteSpace(settings.BaseUrl)
-                ? "https://generativelanguage.googleapis.com"
-                : settings.BaseUrl.TrimEnd('/');
-            var url =
-                $"{baseUrl}/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(settings.ApiKey)}";
-
-            var payload = new
-            {
-                contents = new[]
-                {
-                    new { parts = new object[] { new { text = prompt } } }
-                },
-                generationConfig = new
-                {
-                    temperature = 0.2,
-                    responseMimeType = "application/json"
-                }
-            };
-
-            var client = httpClientFactory.CreateClient("gemini");
-            using var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-            using var response = await client.SendAsync(request, ct);
-            var body = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException("ترجمه انگلیسی ناموفق بود.");
-
-            using var doc = JsonDocument.Parse(body);
-            var text = ExtractText(doc.RootElement);
-            var json = ExtractJsonObject(text);
-            var parsed = JsonSerializer.Deserialize<GeminiEnglishJson>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            }) ?? new GeminiEnglishJson();
-
-            var ensuredTitle = PlainTextSanitizer.Clean(
-                string.IsNullOrWhiteSpace(parsed.TitleEn) ? cleanTitleEn : parsed.TitleEn,
-                300);
-            var ensuredDescription = PlainTextSanitizer.Clean(
-                string.IsNullOrWhiteSpace(parsed.DescriptionEn) ? cleanDescriptionEn : parsed.DescriptionEn,
-                2000);
-
-            if (!IsUsableEnglish(ensuredTitle, titleFa))
-                ensuredTitle = "Children's story";
-            if (!IsUsableEnglish(ensuredDescription, descriptionFa))
-                ensuredDescription = "A gentle story for kids.";
-
-            return (ensuredTitle, ensuredDescription);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "EnsureEnglishAsync failed; using safe fallbacks");
-            return (
-                IsUsableEnglish(cleanTitleEn, titleFa) ? cleanTitleEn : "Children's story",
-                IsUsableEnglish(cleanDescriptionEn, descriptionFa) ? cleanDescriptionEn : "A gentle story for kids.");
-        }
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult((
+            PlainTextSanitizer.Clean(string.IsNullOrWhiteSpace(titleEn) ? titleFa : titleEn, 300),
+            PlainTextSanitizer.Clean(string.IsNullOrWhiteSpace(descriptionEn) ? descriptionFa : descriptionEn, 2000)));
     }
-
     private static GeneratedStoryContent ToContent(GeminiStoryJson parsed)
     {
         var coverPrompt = string.IsNullOrWhiteSpace(parsed.CoverPrompt)
@@ -270,12 +194,8 @@ public class GeminiStoryClient(
             2000);
         var storyScript = PlainTextSanitizer.Clean(parsed.StoryScript, 8000);
 
-        var titleEn = PlainTextSanitizer.Clean(parsed.TitleEn, 300);
-        var descriptionEn = PlainTextSanitizer.Clean(parsed.DescriptionEn, 2000);
-        if (!IsUsableEnglish(titleEn, titleFa))
-            titleEn = string.Empty;
-        if (!IsUsableEnglish(descriptionEn, descriptionFa))
-            descriptionEn = string.Empty;
+        var titleEn = titleFa;
+        var descriptionEn = descriptionFa;
 
         return new GeneratedStoryContent(
             titleFa,

@@ -51,7 +51,8 @@ public class StoryDraftsController(
     [HttpPost]
     [RequestSizeLimit(15 * 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = 15 * 1024 * 1024)]
-    public async Task<ActionResult<StoryDraftDto>> Create([FromForm] IFormFile drawing, CancellationToken ct)
+    public async Task<ActionResult<StoryDraftDto>> Create(
+        [FromForm] IFormFile drawing, CancellationToken ct, [FromForm] bool generateCover = false, [FromForm] string? coverChoice = null)
     {
         try
         {
@@ -59,7 +60,9 @@ public class StoryDraftsController(
                 RequireUserId(),
                 DeviceId(),
                 drawing,
-                ct);
+                ct,
+                generateCover,
+                coverChoice);
             return CreatedAtAction(nameof(Get), new { id = result.Id }, result);
         }
         catch (DailyStoryLimitException ex)
