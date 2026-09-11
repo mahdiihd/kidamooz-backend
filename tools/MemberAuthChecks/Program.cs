@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["Jwt:Secret"] = "test-only-otp-signing-secret-at-least-32-characters",
-    ["SmsIr:ApiKey"] = "test-only-key",
+    ["SmsIr:ApiKey"] = "test-only-key", ["SmsIr:Mode"] = "verify",
     ["SmsIr:TemplateId"] = "123456",
     ["SmsIr:CodeParameter"] = "CODE"
 }).Build();
@@ -42,12 +42,31 @@ handler.Json = "{\"status\":\"unexpected\"}";
 await Reject<OtpDeliveryException>(() => provider.SendAsync("09120000000", "123456", default), "Invalid response schema rejected");
 var missingTemplate = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {
-    ["SmsIr:ApiKey"] = "test-only-key", ["SmsIr:CodeParameter"] = "CODE"
+    ["SmsIr:ApiKey"] = "test-only-key", ["SmsIr:Mode"] = "verify", ["SmsIr:CodeParameter"] = "CODE"
 }).Build();
 await Reject<OtpDeliveryException>(() => new SmsIrOtpSender(new HttpClient(handler), missingTemplate)
     .SendAsync("09120000000", "123456", default), "Missing template rejected");
 handler.Throw = true;
 await Reject<OtpDeliveryException>(() => provider.SendAsync("09120000000", "123456", default), "Provider transport failure redacted");
+
+var bulkConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["SmsIr:ApiKey"] = "test-only-key", ["SmsIr:Mode"] = "bulk", ["SmsIr:LineNumber"] = "30000000000000"
+}).Build();
+var bulkHandler = new ProviderHandler { Json = "{\"status\":1,\"data\":{\"messageIds\":[123]}}" };
+var bulkSender = new SmsIrOtpSender(new HttpClient(bulkHandler), bulkConfiguration);
+await bulkSender.SendAsync("09120000000", "123456", default);
+using (var payload = JsonDocument.Parse(bulkHandler.Body!))
+{
+    var root = payload.RootElement;
+    Check(bulkHandler.Url == "https://api.sms.ir/v1/send/bulk"
+        && root.GetProperty("lineNumber").GetInt64() == 30000000000000
+        && root.GetProperty("mobiles")[0].GetString() == "09120000000"
+        && root.GetProperty("messageText").GetString()!.Contains("123456")
+        && root.GetProperty("sendDateTime").ValueKind == JsonValueKind.Null, "Bulk OTP contract without template");
+}
+bulkHandler.Json = "{\"status\":1,\"data\":{\"messageIds\":[null]}}";
+await Reject<OtpDeliveryException>(() => bulkSender.SendAsync("09120000000", "123456", default), "Rejected recipient is not reported as sent");
 
 if (!args.Contains("--local-db"))
 {
