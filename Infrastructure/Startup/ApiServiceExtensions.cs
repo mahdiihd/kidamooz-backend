@@ -31,7 +31,7 @@ public static class ApiServiceExtensions
         {
             options.RejectionStatusCode = 429;
             options.AddPolicy("member-otp", context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                (context.Connection.RemoteIpAddress?.ToString() ?? "unknown") + (context.Request.Path.Value?.EndsWith("/verify", StringComparison.OrdinalIgnoreCase) == true ? ":verify" : ":request"),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(10), QueueLimit = 0 }));
         });
 

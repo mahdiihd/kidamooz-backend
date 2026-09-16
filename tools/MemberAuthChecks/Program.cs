@@ -68,6 +68,36 @@ using (var payload = JsonDocument.Parse(bulkHandler.Body!))
 bulkHandler.Json = "{\"status\":1,\"data\":{\"messageIds\":[null]}}";
 await Reject<OtpDeliveryException>(() => bulkSender.SendAsync("09120000000", "123456", default), "Rejected recipient is not reported as sent");
 
+var farazConfig = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Faraz:ApiKey"] = "test-only-key", ["Faraz:PatternCode"] = "test-pattern",
+    ["Faraz:LineNumber"] = "90008361", ["Faraz:CodeParameter"] = "code"
+}).Build();
+var farazHandler = new ProviderHandler { Json = "{\"status\":\"success\",\"data\":123}" };
+var faraz = new FarazOtpSender(new HttpClient(farazHandler), farazConfig);
+await faraz.SendAsync("09120000000", "123456", default);
+using (var payload = JsonDocument.Parse(farazHandler.Body!))
+{
+    var root = payload.RootElement;
+    Check(farazHandler.Url == "https://api.iranpayamak.com/ws/v1/sms/pattern"
+        && farazHandler.ApiKey == "test-only-key"
+        && root.GetProperty("code").GetString() == "test-pattern"
+        && root.GetProperty("attributes").GetProperty("code").GetString() == "123456"
+        && root.GetProperty("recipient").GetString() == "09120000000"
+        && root.GetProperty("line_number").GetString() == "90008361", "Faraz pattern contract");
+}
+await Reject<OtpDeliveryException>(() => faraz.SendAsync("09120000000", "12345", default), "Faraz requires six digits");
+farazHandler.Json = "{\"status\":\"error\"}";
+await Reject<OtpDeliveryException>(() => faraz.SendAsync("09120000000", "123456", default), "Faraz rejects provider failure");
+farazHandler.Status = HttpStatusCode.Unauthorized;
+farazHandler.Json = "{\"status\":\"success\"}";
+await Reject<OtpDeliveryException>(() => faraz.SendAsync("09120000000", "123456", default), "Faraz rejects HTTP failure");
+farazHandler.Status = HttpStatusCode.OK;
+farazHandler.Json = "invalid";
+await Reject<OtpDeliveryException>(() => faraz.SendAsync("09120000000", "123456", default), "Faraz rejects malformed response");
+farazHandler.Throw = true;
+await Reject<OtpDeliveryException>(() => faraz.SendAsync("09120000000", "123456", default), "Faraz redacts transport errors");
+
 if (!args.Contains("--local-db"))
 {
     Console.WriteLine("Database checks skipped; pass --local-db from Back to use a disposable local SQL database.");
@@ -175,7 +205,7 @@ sealed class ProviderHandler : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         if (Throw) throw new HttpRequestException("test-only-key");
-        ApiKey = request.Headers.GetValues("x-api-key").Single();
+        ApiKey = request.Headers.GetValues(request.Headers.Contains("Api-Key") ? "Api-Key" : "x-api-key").Single();
         Url = request.RequestUri?.ToString();
         Method = request.Method;
         ContentType = request.Content?.Headers.ContentType?.MediaType;

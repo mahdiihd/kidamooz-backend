@@ -56,8 +56,12 @@ public static class ApplicationServiceExtensions
         builder.Services.AddScoped<IStoryDraftService, StoryDraftService>();
         builder.Services.AddScoped<IMemberAuthService, MemberAuthService>();
         builder.Services.AddScoped<MemberOtpService>();
-        builder.Services.AddHttpClient<IMemberOtpSender, SmsIrOtpSender>(client => client.Timeout = TimeSpan.FromSeconds(15))
-            .RemoveAllLoggers();
+        if (builder.Configuration["Otp:Provider"]?.Equals("faraz", StringComparison.OrdinalIgnoreCase) == true)
+            builder.Services.AddHttpClient<IMemberOtpSender, FarazOtpSender>(client => client.Timeout = TimeSpan.FromSeconds(15))
+                .RemoveAllLoggers();
+        else
+            builder.Services.AddHttpClient<IMemberOtpSender, SmsIrOtpSender>(client => client.Timeout = TimeSpan.FromSeconds(15))
+                .RemoveAllLoggers();
         builder.Services.AddScoped<IMemberContext, MemberContext>();
         builder.Services.AddScoped<IChildProfileService, ChildProfileService>();
         builder.Services.AddScoped<IMemberFavoriteService, MemberFavoriteService>();
