@@ -2,7 +2,7 @@
 
 This guide applies to every file in this project.
 
-- Overview: [spec.md](spec.md). Workflow: [Kidamooz backend skill](.agents/skills/kidamooz-backend/SKILL.md).
+- Overview: [spec.md](spec.md).
 - The project uses ASP.NET Core targeting `net9.0`, EF Core 9, and SQL Server.
 - Startup and middleware order are in `Program.cs`; dependency registration and startup lifecycle details are under `Infrastructure/Startup`. Controllers live in `Controllers/Admin` and `Controllers/Public`.
 - Keep service logic, data access, and response contracts aligned with the existing `Services`, `Repositories`, `DTOs`, and `Mapping` structure.
