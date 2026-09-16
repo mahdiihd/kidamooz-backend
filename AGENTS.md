@@ -1,23 +1,33 @@
-# راهنمای کار روی بک‌اند
+# Backend Development Guide
 
-این راهنما برای همه فایل‌های این پروژه است.
+This guide applies to every file in this project.
 
-- معرفی: [spec.md](spec.md). گردش کار: [مهارت توسعه API](.agents/skills/kidamooz-backend/SKILL.md).
-- پروژه ASP.NET Core با هدف `net9.0`، EF Core 9 و SQL Server است.
-- ترتیب راه‌اندازی و middlewareها در `Program.cs` است؛ جزئیات ثبت وابستگی‌ها و چرخه شروع در `Infrastructure/Startup` قرار دارند. کنترلرها در `Controllers/Admin` و `Controllers/Public` هستند.
-- منطق سرویس، دسترسی داده و قرارداد پاسخ را مطابق ساختار فعلی `Services`، `Repositories`، `DTOs` و `Mapping` نگه دارید.
-- تغییر قرارداد را با مصرف‌کنندگان `../Admin` و `../android` تطبیق دهید؛ سیاست‌های دسترسی مدیر و عضو را از هم تفکیک کنید.
-- برای تغییر مدل داده، `Data/AppDbContext.cs`، migrationهای موجود و `Data/DbInitializer.cs` را بررسی کنید.
-- اجرای برنامه در شروع، migration و seed پایگاه داده را اجرا می‌کند. برای بررسی کامپایل از `dotnet build back.csproj` استفاده کنید؛ برنامه را صرفاً برای بررسی مستندات اجرا نکنید.
-- کلیدها، فایل‌های محیط، تنظیمات production و اعتبارنامه‌های Firebase یا ذخیره‌سازی را وارد مستندات و خروجی لاگ نکنید.
-- پوشه‌های `bin`، `obj` و `publish` خروجی هستند. ابزارهای `tools` پروژه‌های مستقل و از کامپایل پروژه وب مستثنا هستند.
-- پروژه آزمون اختصاصی در بررسی فعلی یافت نشد؛ ساخت موفق را معادل آزمون API ندانید. بررسی رفتاری را با داده و محیط آزمایشی انجام دهید.
+- Overview: [spec.md](spec.md). Workflow: [Kidamooz backend skill](.agents/skills/kidamooz-backend/SKILL.md).
+- The project uses ASP.NET Core targeting `net9.0`, EF Core 9, and SQL Server.
+- Startup and middleware order are in `Program.cs`; dependency registration and startup lifecycle details are under `Infrastructure/Startup`. Controllers live in `Controllers/Admin` and `Controllers/Public`.
+- Keep service logic, data access, and response contracts aligned with the existing `Services`, `Repositories`, `DTOs`, and `Mapping` structure.
+- Coordinate contract changes with consumers in `../Admin` and `../android`; keep administrator and member authorization policies distinct.
+- For data model changes, inspect `Data/AppDbContext.cs`, existing migrations, and `Data/DbInitializer.cs` together.
+- Application startup applies migrations and seed data. Use `dotnet build back.csproj` for compilation checks; do not start the application only to verify documentation.
+- Never include keys, environment files, production settings, Firebase credentials, or storage credentials in documentation or log output.
+- `bin`, `obj`, and `publish` are generated. Projects under `tools` are independent and excluded from the web project compilation.
+- No dedicated test project was found. A successful build is not proof of API behavior; verify relevant behavior with controlled data and a test environment.
 
-## امنیت و جلوگیری از انتشار اطلاعات محرمانه
+## Mandatory Spec Kit Workflow
 
-- گذرواژه دیتابیس، رشته اتصال دارای اعتبارنامه، کلید API، توکن، کلید خصوصی، حساب سرویس Firebase و کلید امضای اپ نباید وارد commit یا push شوند؛ آن‌ها را در گزارش، لاگ، مستندات و پیام PR نیز نمایش ندهید.
-- اسرار سمت سرور را از متغیر محیطی یا مخزن امن اسرار دریافت کنید. در فایل‌های قابل انتشار فقط مقدار نمونه غیرواقعی قرار دهید. کد مرورگر و خروجی اپ محل نگهداری اسرار سرور نیستند.
-- پیش از هر commit، فایل‌های staged و محتوای تغییرات را برای اسرار بررسی کنید. پیش از push، همه commitهای ارسالی را نیز بررسی کنید؛ فقط بررسی آخرین diff کافی نیست. گزارش بررسی باید مقدارها را پنهان و فقط مسیر و نوع مورد مشکوک را نشان دهد.
-- فایل‌های محیطی واقعی، تنظیمات محلی دارای اسرار، کلیدها و خروجی‌های شامل اطلاعات حساس را stage نکنید؛ از افزودن اجباری فایل‌های نادیده‌گرفته‌شده و stage کردن بی‌بررسی همه فایل‌ها پرهیز کنید.
-- قواعد .gitignore فایل‌های از قبل tracked یا تاریخچه را پاک نمی‌کنند. اگر اطلاعات محرمانه در فایل tracked یا commit قبلی پیدا شد، push مربوط را متوقف و بدون نمایش مقدار گزارش کنید؛ حذف خط از نسخه فعلی رفع نشت تاریخی نیست. تعویض اعتبارنامه و پاک‌سازی تاریخچه باید با هماهنگی انجام شوند.
-- فایل تنظیمات عمومی و فایل نمونه نیز باید بررسی شوند؛ نام example یا نبود فایل در الگوی ignore تضمین نبود اطلاعات محرمانه نیست. محتوای فایل‌های حساس را برای بررسی در خروجی ابزار چاپ نکنید.
+- Spec Kit infrastructure lives in `.specify/` and its skills live in `.agents/skills/speckit-*`. The project constitution is `.specify/memory/constitution.md` and MUST govern planning and implementation.
+- Every new feature, behavior change, architectural change, or non-trivial refactor MUST complete the Spec-Driven Development workflow before implementation: `$speckit-specify`, `$speckit-clarify`, `$speckit-plan`, `$speckit-tasks`, `$speckit-analyze`, `$speckit-implement`, and `$speckit-converge`, in that order.
+- Implementation MUST NOT begin until `spec.md`, `plan.md`, and `tasks.md` exist and analysis reports no unresolved blocking inconsistency. Work is not complete until convergence reports `Converged`.
+- Keep feature artifacts in `specs/<feature>/`. Feed discoveries that affect requirements or design back into the same artifacts before continuing implementation.
+- Every product idea, proposed capability, or materially uncertain solution MUST complete Idea Assessment before entering SDD: `$speckit-assess-intake`, `$speckit-assess-research`, `$speckit-assess-define`, `$speckit-assess-shape`, and `$speckit-assess-decide`, in that order.
+- Keep assessment artifacts in `.specify/assessments/<slug>/`. Only a `go` decision with explicit scope MAY move to `$speckit-specify`. A `needs-clarification` or `kill` decision MUST stop implementation until the decision artifact is updated to `go`.
+- Documentation-only edits that do not change product behavior may skip SDD. All other exceptions require an explicit user instruction recorded in the task conversation.
+
+## Secret Safety
+
+- Never commit or push database passwords, credential-bearing connection strings, API keys, tokens, private keys, Firebase service accounts, or app-signing keys. Do not expose them in reports, logs, documentation, or PR messages.
+- Load server secrets from environment variables or approved secret storage. Use fake placeholders in publishable files. Browser and app code are not secret stores.
+- Before every commit, inspect staged files and changes for secrets. Before push, inspect every outgoing commit, not only the latest diff. Reports must redact values and identify only the suspicious path and secret type.
+- Do not stage real environment files, local secret settings, keys, or sensitive outputs. Avoid force-adding ignored files or staging everything without review.
+- `.gitignore` does not remove tracked files or history. If a secret exists in a tracked file or earlier commit, stop the push and report it without showing the value. Removing the current line does not repair historical exposure; credential rotation and history cleanup require coordination.
+- Inspect public configuration and example files too. An `example` name or absence from ignore patterns does not guarantee safety. Do not print sensitive file contents into tool output.
